@@ -476,11 +476,12 @@ void UavcanGnssBridge::handleInjectDataTopic()
 
 bool UavcanGnssBridge::injectData(const uint8_t *const data, const size_t data_len)
 {
-	using ardupilot::gnss::MovingBaselineData;
+	using uavcan::equipment::gnss::RTCMStream;
 
 	perf_count(_rtcm_perf);
 
-	MovingBaselineData msg;
+	RTCMStream msg;
+	msg.protocol_id = RTCMStream::PROTOCOL_ID_RTCM3;
 
 	const size_t capacity = msg.data.capacity();
 	size_t written = 0;
