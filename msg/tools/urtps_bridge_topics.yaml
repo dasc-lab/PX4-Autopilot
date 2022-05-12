@@ -62,5 +62,6 @@ rtps:
     receive: true
   - msg:     vehicle_status
     send:    true
-
+  - msg:     manual_control_setpoint
+    receive: true
 
