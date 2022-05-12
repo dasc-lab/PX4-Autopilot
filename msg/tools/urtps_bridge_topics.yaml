@@ -57,4 +57,7 @@ rtps:
     send:    true
   - msg:     sensor_gps
     receive: true
+  - msg:     vehicle_status
+    send:    true
+
 
