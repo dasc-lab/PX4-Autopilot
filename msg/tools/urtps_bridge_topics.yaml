@@ -61,4 +61,5 @@ rtps:
     send:    true
   - msg:     manual_control_setpoint
     receive: true
-
+  - msg:     battery_status
+    send:    true
