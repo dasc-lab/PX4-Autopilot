@@ -63,3 +63,5 @@ rtps:
     receive: true
   - msg:     battery_status
     send:    true
+  - msg:     gps_inject_data
+    receive: true
