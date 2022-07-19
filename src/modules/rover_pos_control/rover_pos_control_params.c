@@ -49,6 +49,118 @@
  */
 
 /**
+ * Rover FF term for Body X velocity control
+ *
+ * This is the FF term for the linear speed
+ *
+ * @unit %m/s
+ * @min 0.005
+ * @max 100.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ROVER_VEL_FF, 1.0f);
+
+/**
+ * Rover FF term for Angular Z velocity control
+ *
+ * This is the FF term for the angular speed
+ *
+ * @unit %m/s
+ * @min 0.005
+ * @max 100.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ROVER_OMG_FF, 1.0f);
+
+/**
+ * Rover gain for computing velocity sp
+ *
+ * This is the proportional gain for the speed
+ *
+ * @unit %m/s
+ * @min 0.005
+ * @max 50.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ROVER_K_POS, 1.0f);
+
+/**
+ * Rover Gain for computing angular velocity sp
+ *
+ * This is the proportional gain for the angular speed
+ *
+ * @unit %m/s
+ * @min 0.00
+ * @max 50.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ROVER_K_YAW, 1.0f);
+
+/**
+ * Speed proportional gain for rover omega control
+ *
+ * This is the proportional gain for the speed closed loop omega controller
+ *
+ * @unit %m/s
+ * @min 0.005
+ * @max 50.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ANG_SPEED_P, 2.0f);
+
+/**
+ * Speed Integral gain fopr rover omega control
+ *
+ * This is the integral gain for the speed closed loop omega controller
+ *
+ * @unit %m/s
+ * @min 0.00
+ * @max 50.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ANG_SPEED_I, 3.0f);
+
+/**
+ * Speed proportional gain for rover omega control
+ *
+ * This is the derivative gain for the speed closed loop omega controller
+ *
+ * @unit %m/s
+ * @min 0.00
+ * @max 50.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ANG_SPEED_D, 0.001f);
+
+/**
+ * Speed integral maximum value
+ *
+ * This is the maxim value the integral can reach to prevent wind-up for omega control
+ *
+ * @unit %m/s
+ * @min 0.005
+ * @max 50.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ANG_SPEED_IMAX, 1.0f);
+
+/**
  * Distance from front axle to rear axle
  *
  * A value of 0.31 is typical for 1/10 RC cars.

@@ -119,6 +119,9 @@ private:
 	uORB::Subscription _att_sp_sub{ORB_ID(vehicle_attitude_setpoint)};
 	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
 
+	// mod
+
+
 	manual_control_setpoint_s		_manual_control_setpoint{};			    /**< r/c channel data */
 	position_setpoint_triplet_s		_pos_sp_triplet{};		/**< triplet of mission items */
 	vehicle_attitude_setpoint_s		_att_sp{};			/**< attitude setpoint > */
@@ -144,6 +147,7 @@ private:
 	/* Pid controller for the speed. Here we assume we can control airspeed but the control variable is actually on
 	 the throttle. For now just assuming a proportional scaler between controlled airspeed and throttle output.*/
 	PID_t _speed_ctrl{};
+	PID_t _angular_speed_ctrl{};
 
 	// estimator reset counters
 	uint8_t _pos_reset_counter{0};		// captures the number of times the estimator has reset the horizontal position
@@ -185,6 +189,17 @@ private:
 		(ParamFloat<px4::params::GND_SPEED_I>) _param_speed_i,
 		(ParamFloat<px4::params::GND_SPEED_D>) _param_speed_d,
 		(ParamFloat<px4::params::GND_SPEED_IMAX>) _param_speed_imax,
+
+		/// NEW //////////////////////////////////////////////////////////////////////
+		(ParamFloat<px4::params::ANG_SPEED_P>) _param_angular_speed_p,
+		(ParamFloat<px4::params::ANG_SPEED_I>) _param_angular_speed_i,
+		(ParamFloat<px4::params::ANG_SPEED_D>) _param_angular_speed_d,
+		(ParamFloat<px4::params::ANG_SPEED_IMAX>) _param_angular_speed_imax,
+		(ParamFloat<px4::params::ROVER_K_POS>) _param_rover_k_pos,
+		(ParamFloat<px4::params::ROVER_K_YAW>) _param_rover_k_yaw,
+		(ParamFloat<px4::params::ROVER_VEL_FF>) _param_rover_vel_ff,
+		(ParamFloat<px4::params::ROVER_OMG_FF>) _param_rover_omg_ff,
+		///////////////////////////////////////////////////////////////
 		(ParamFloat<px4::params::GND_SPEED_THR_SC>) _param_throttle_speed_scaler,
 
 		(ParamFloat<px4::params::GND_THR_MIN>) _param_throttle_min,
@@ -211,9 +226,10 @@ private:
 	/**
 	 * Control position.
 	 */
-	bool		control_position(const matrix::Vector2d &global_pos, const matrix::Vector3f &ground_speed,
-					 const position_setpoint_triplet_s &_pos_sp_triplet);
-	void		control_velocity(const matrix::Vector3f &current_velocity);
+	void 		control_local_position(const matrix::Vector2f &current_position, const matrix::Vector3f &current_velocity, const matrix::Vector3f &current_angular_velocity);
+	// bool		control_position(const matrix::Vector2d &global_pos, const matrix::Vector3f &ground_speed,
+	// 				 const position_setpoint_triplet_s &_pos_sp_triplet);
+	void		control_velocity(const matrix::Vector3f &current_velocity, const matrix::Vector3f &current_angular_velocity, const float desired_linear_x_velocity, const float desired_angular_z_velocity);
 	void		control_attitude(const vehicle_attitude_s &att, const vehicle_attitude_setpoint_s &att_sp);
 
 };
