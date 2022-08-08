@@ -239,7 +239,7 @@ MulticopterRateControl::Run()
 			}
 
 			// run rate controller
-			const Vector3f att_control = _rate_control.update(rates, _rates_sp, angular_accel, dt, _maybe_landed || _landed);
+			Vector3f att_control = _rate_control.update(rates, _rates_sp, angular_accel, dt, _maybe_landed || _landed);
 
 			/*  
 			 * DASC LAB CUSTOM BEGIN
@@ -248,23 +248,23 @@ MulticopterRateControl::Run()
 			// hijack px4 and insert our own geometric controller if sufficient flags are met
 			
 			// check that we are in offboard mode and want to use the custom geometric controller	
-			if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_controller){
+			if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
 				// implement the geometric controller, and update att_control
-				const matrix::Vector3f _pos(0,0,0);, // pass in current state
-				const matrix::Vector3f _vel(0,0,0);
-				const matrix::Quatf    _ang_att(0,0,0);
-				const matrix::Vector3f _ang_rate(0,0,0);
-				const vehicle_local_position_setpoint_s _setpoint; // pass in setpoint
-                       		const vehicle_control_mode_s _control_mode; // determines which mode we should control it in
+				matrix::Vector3f _pos(0,0,0); // pass in current state
+				matrix::Vector3f _vel(0,0,0);
+				matrix::Quatf    _ang_att(0,0,0, 0);
+				matrix::Vector3f _ang_rate(0,0,0);
+				vehicle_local_position_setpoint_s _setpoint{}; // pass in setpoint
+                       		vehicle_control_mode_s _control_mode{}; // determines which mode we should control it in
 						
-				matrix::Matrix<float, 4, 1> res = _geometric_control.update(
-					&_pos, &_vel, &_ang_att, &_ang_rate, &_setpoint, &_control_mode);
+				const matrix::Matrix<float, 4, 1> res = _geometric_control.update(
+					_pos, _vel, _ang_att, _ang_rate, _setpoint, _control_mode);
 				
 				// store results into appropriate variables
-				_thrust_sp     = res(0);
-				att_control(0) = res(1);
-				att_control(1) = res(2);
-				att_control(2) = res(3);
+				_thrust_sp     = res(0,0);
+				att_control(0) = res(1,0);
+				att_control(1) = res(2,0);
+				att_control(2) = res(3,0);
 			}
 
 			/*

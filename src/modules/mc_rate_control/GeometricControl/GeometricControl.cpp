@@ -54,12 +54,11 @@ using namespace matrix;
 // 	_control_allocator_saturation_negative = saturation_negative;
 // }
 
-matrix::Matrix<float, 4, 1> update(
+matrix::Matrix<float, 4, 1> GeometricControl::update(
 			const matrix::Vector3f &pos, // pass in current state
 			const matrix::Vector3f &vel,
 			const matrix::Quatf    &ang_att,
 			const matrix::Vector3f &ang_rate,
-			const matrix::Vector3f &ang_acc,	
 			const vehicle_local_position_setpoint_s &setpoint, // pass in setpoint
                         const vehicle_control_mode_s &control_mode // determines which mode we should control it in
 		       	)
@@ -69,25 +68,25 @@ matrix::Matrix<float, 4, 1> update(
 	
 
 	// error in position
-	const matrix::Vector3f pos_sp(setpoint->x, setpoint->y, setpoint->z);
+	const matrix::Vector3f pos_sp(setpoint.x, setpoint.y, setpoint.z);
 	const matrix::Vector3f pos_err = pos - pos_sp;
 
 	// error in velocity
-	const matrix::Vector3f vel_sp(setpoint->vx, setpoint->vy, setpoint->vz);
+	const matrix::Vector3f vel_sp(setpoint.vx, setpoint.vy, setpoint.vz);
 	const matrix::Vector3f vel_err = vel - vel_sp;
 	
-	const matrix::Vector3f acc_sp (setpoint->acceleration[0], setpoint->acceleration[1], setpoint->acceleration[2]);
+	const matrix::Vector3f acc_sp (setpoint.acceleration[0], setpoint.acceleration[1], setpoint.acceleration[2]);
 	
 	// create the required acceleration vector
-	const matrix::Vector3f acc = -(-kx* pos_err -kv*vel_err - g*_z + acc_sp)
+	const matrix::Vector3f acc = -(-kx* pos_err -kv*vel_err - g*_z + acc_sp);
 
 	// get the unit vector in the desired thrust direction
-	const matrix::Vector3f b3d = (acc.norm() < 0.01) ? Vector3f(0,0,1) : acc.unit();
+	const matrix::Vector3f b3d = (acc.norm() < 0.01f) ? Vector3f(0,0,1) : acc.unit();
 
 	// get the unit vector pointing in the heading direction
 	
-	float b1dx = cosf(setpoint->yaw);
-	float b1dy = sinf(setpoint->yaw);
+	float b1dx = cosf(setpoint.yaw);
+	float b1dy = sinf(setpoint.yaw);
 	float b1dz = 0.0f;
 
 	const matrix::Vector3f b1d(b1dx, b1dy, b1dz);
@@ -100,7 +99,7 @@ matrix::Matrix<float, 4, 1> update(
 
 
 	// construct the desired rotation matrix
-	const matrix::DCM rotDes;
+	matrix::Dcm<float> rotDes;
 	for (uint i=0; i< 3; i++){
 		rotDes(i,0) = b1d_new(i);	
 		rotDes(i,1) = b2d(i);	
@@ -109,7 +108,7 @@ matrix::Matrix<float, 4, 1> update(
 
 
 	// construct the current rotation matrix
-	const matrix::DCM rotMat(ang_att);
+	const matrix::Dcm<float> rotMat(ang_att);
 	
 	// error in rotation
 	matrix::Vector3f rotMat_err = 0.5f * skew_to_vector( rotDes.T() * rotMat - rotMat.T() * rotDes);
@@ -133,12 +132,12 @@ matrix::Matrix<float, 4, 1> update(
 
 	// get the angular acceleration
 	
-	const matrix::Vector3f ang_acc_des = J.inv() * ( moments - omega_cross_Jomega );
+	const matrix::Vector3f ang_acc_des = J.I() * ( moments - omega_cross_Jomega );
 
 	
 	// normalize terms - convert from SI into arbitrary ranges for the drones
 	matrix::Vector3f ang_acc_des_normalized = ang_acc_des / torque_constant;
-	const float coll_thrust_normalized = min(1.0f, max(0.0f, coll_acc / g * hover_throttle)); // clamp the thrust to a reasonable rangle
+	float coll_thrust_normalized = math::min(1.0f, math::max(0.0f, coll_acc / g * hover_throttle)); // clamp the thrust to a reasonable rangle
 
 
 	// bound the max angular acceleration
@@ -149,15 +148,20 @@ matrix::Matrix<float, 4, 1> update(
 
 
 	// return things
+	matrix::Matrix<float, 4,1> res;
+	res(0,0) = coll_thrust_normalized;
+	res(1,0) = ang_acc_des_normalized(0);
+	res(2,0) = ang_acc_des_normalized(1);
+	res(3,0) = ang_acc_des_normalized(2);
 	
-	return Matrix<float, 4,1> (coll_thrust_normalized, ang_acc_des_normalized(0), ang_acc_des_normalized(1), ang_acc_des_normalized(2));
+	return res;
 
 }
 
 
-matrix::SquareMatrix<float, 3> vector_to_skew(matrix::Vector3f v){
+matrix::SquareMatrix<float, 3> GeometricControl::vector_to_skew(matrix::Vector3f v){
 
-	matrix::SquareMatrix<float, 3) M;
+	matrix::SquareMatrix<float, 3> M;
 	M(0,0) = 0;
 	M(0,1) = -v(2);
 	M(0,2) = v(1);
@@ -173,12 +177,12 @@ matrix::SquareMatrix<float, 3> vector_to_skew(matrix::Vector3f v){
 	return M;
 }
 
-matrix::Vector3f skew_to_vector(matrix::SquareMatrix<float, 3> M){
+matrix::Vector3f GeometricControl::skew_to_vector(matrix::SquareMatrix<float, 3> M){
 
 	matrix::Vector3f v;
 	v(0) = 0.5f * (M(2,1) - M(1,2));
 	v(1) = 0.5f * (M(0,2) - M(2,0));
 	v(2) = 0.5f * (M(1,0) - M(0,1));
 
-	return v
+	return v;
 }
