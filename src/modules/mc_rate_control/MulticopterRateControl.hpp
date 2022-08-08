@@ -63,6 +63,11 @@
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
 
+// DASC-CUSTOM
+#include <GeometricControl.hpp>
+#include <uORB/topics/vehicle_local_position_setpoint.h>
+#include <uORB/topics/vehicle_control_mode.h>
+
 using namespace time_literals;
 
 class MulticopterRateControl : public ModuleBase<MulticopterRateControl>, public ModuleParams, public px4::WorkItem
@@ -96,6 +101,7 @@ private:
 	void publishThrustSetpoint(const hrt_abstime &timestamp_sample);
 
 	RateControl _rate_control; ///< class for rate control calculations
+	GeometricControl _geometric_control; ///< class for geometric control calculations
 
 	uORB::Subscription _battery_status_sub{ORB_ID(battery_status)};
 	uORB::Subscription _control_allocator_status_sub{ORB_ID(control_allocator_status)};
