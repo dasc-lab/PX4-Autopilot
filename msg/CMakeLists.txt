@@ -80,8 +80,9 @@ set(msg_files
 	estimator_status.msg
 	estimator_status_flags.msg
 	event.msg
-	failure_detector_status.msg
+	external_controller.msg
 	follow_target.msg
+	failure_detector_status.msg
 	follow_target_estimator.msg
 	follow_target_status.msg
 	generator_status.msg

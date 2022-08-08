@@ -67,6 +67,7 @@
 #include <GeometricControl.hpp>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/external_controller.h>
 
 using namespace time_literals;
 
@@ -113,7 +114,8 @@ private:
 	uORB::Subscription _vehicle_rates_setpoint_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 
-	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
+	uORB::Subscription _external_controller_sub{ORB_ID(external_controller)};
+  uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::SubscriptionCallbackWorkItem _vehicle_angular_velocity_sub{this, ORB_ID(vehicle_angular_velocity)};
 
@@ -128,6 +130,7 @@ private:
 
 	vehicle_control_mode_s	_vehicle_control_mode{};
 	vehicle_status_s	_vehicle_status{};
+	external_controller_s     _external_controller{};
 
 	bool _landed{true};
 	bool _maybe_landed{true};

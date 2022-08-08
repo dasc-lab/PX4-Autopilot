@@ -38,6 +38,7 @@
 
 #pragma once
 
+#include <lib/mathlib/mathlib.h>
 #include <matrix/matrix/math.hpp>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -90,17 +91,11 @@ public:
 	 * @param dt desired vehicle angular rate setpoint
 	 * @return [-1,1] normalized torque vector to apply to the vehicle
 	 */
-	matrix::Vector3f update(const matrix::Vector3f &rate, const matrix::Vector3f &rate_sp,
-				const matrix::Vector3f &angular_accel, const float dt, const bool landed);
-
-
-
 	matrix::Matrix<float, 4, 1> update(
 			const matrix::Vector3f &pos, // pass in current state
 			const matrix::Vector3f &vel,
 			const matrix::Quatf    &ang_att,
 			const matrix::Vector3f &ang_rate,
-			const matrix::Vector3f &ang_acc,	
 			const vehicle_local_position_setpoint_s &setpoint, // pass in setpoint
                         const vehicle_control_mode_s &control_mode // determines which mode we should control it in
 		       	);
