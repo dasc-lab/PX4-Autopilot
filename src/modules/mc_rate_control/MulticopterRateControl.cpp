@@ -241,11 +241,43 @@ MulticopterRateControl::Run()
 			// run rate controller
 			const Vector3f att_control = _rate_control.update(rates, _rates_sp, angular_accel, dt, _maybe_landed || _landed);
 
+			/*  
+			 * DASC LAB CUSTOM BEGIN
+			 */
+
+			// hijack px4 and insert our own geometric controller if sufficient flags are met
+			
+			// check that we are in offboard mode and want to use the custom geometric controller	
+			if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_controller){
+				// implement the geometric controller, and update att_control
+				const matrix::Vector3f _pos(0,0,0);, // pass in current state
+				const matrix::Vector3f _vel(0,0,0);
+				const matrix::Quatf    _ang_att(0,0,0);
+				const matrix::Vector3f _ang_rate(0,0,0);
+				const vehicle_local_position_setpoint_s _setpoint; // pass in setpoint
+                       		const vehicle_control_mode_s _control_mode; // determines which mode we should control it in
+						
+				matrix::Matrix<float, 4, 1> res = _geometric_control.update(
+					&_pos, &_vel, &_ang_att, &_ang_rate, &_setpoint, &_control_mode);
+				
+				// store results into appropriate variables
+				_thrust_sp     = res(0);
+				att_control(0) = res(1);
+				att_control(1) = res(2);
+				att_control(2) = res(3);
+			}
+
+			/*
+			 *  DASC LAB CUSTOM END
+			 */
+
+				
 			// publish rate controller status
 			rate_ctrl_status_s rate_ctrl_status{};
 			_rate_control.getRateControlStatus(rate_ctrl_status);
 			rate_ctrl_status.timestamp = hrt_absolute_time();
 			_controller_status_pub.publish(rate_ctrl_status);
+
 
 			// publish actuator controls
 			actuator_controls_s actuators{};

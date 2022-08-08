@@ -31,21 +31,12 @@
 #
 ############################################################################
 
-add_subdirectory(RateControl)
-add_subdirectory(GeometricControl)
+px4_add_library(GeometricControl
+	GeometricControl.cpp
+	GeometricControl.hpp
+)
+target_compile_options(GeometricControl PRIVATE ${MAX_CUSTOM_OPT_LEVEL})
+target_include_directories(GeometricControl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(GeometricControl PRIVATE mathlib)
 
-px4_add_module(
-	MODULE modules__mc_rate_control
-	MAIN mc_rate_control
-	COMPILE_FLAGS
-		${MAX_CUSTOM_OPT_LEVEL}
-	SRCS
-		MulticopterRateControl.cpp
-		MulticopterRateControl.hpp
-	DEPENDS
-		circuit_breaker
-		mathlib
-		GeometricControl
-		RateControl
-		px4_work_queue
-	)
+#px4_add_unit_gtest(SRC RateControlTest.cpp LINKLIBS RateControl)
