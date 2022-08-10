@@ -51,47 +51,20 @@ class GeometricControl
 {
 public:
 	GeometricControl(){
-		J.setIdentity();
+    _J.setIdentity();
 	}
 	~GeometricControl() = default;
 
-	/**
-	 * Set the rate control gains
-	 * @param P 3D vector of proportional gains for body x,y,z axis
-	 * @param I 3D vector of integral gains
-	 * @param D 3D vector of derivative gains
-	 */
-	//void setGains(const matrix::Vector3f &P, const matrix::Vector3f &I, const matrix::Vector3f &D);
-
-	/**
-	 * Set the mximum absolute value of the integrator for all axes
-	 * @param integrator_limit limit value for all axes x, y, z
-	 */
-	//void setIntegratorLimit(const matrix::Vector3f &integrator_limit) { _lim_int = integrator_limit; };
-
-	/**
-	 * Set direct rate to torque feed forward gain
-	 * @see _gain_ff
-	 * @param FF 3D vector of feed forward gains for body x,y,z axis
-	 */
-	//void setFeedForwardGain(const matrix::Vector3f &FF) { _gain_ff = FF; };
-
-	/**
-	 * Set saturation status
-	 * @param control saturation vector from control allocator
-	 */
-	//void setSaturationStatus(const matrix::Vector<bool, 3> &saturation_positive,
-	//			 const matrix::Vector<bool, 3> &saturation_negative);
-
+  // functions to set internal parameters
+  void set_gains(float kx, float kv, float kR, float komega);
+  void set_inertia(float Jxx, float Jyy, float Jzz, float Jxy=0.0f, float Jxz=0.0f, float Jyz=0.0f);
 
 	/**
 	 * Run one control loop cycle calculation
-	 * @param rate estimation of the current vehicle angular rate
-	 * @param rate_sp desired vehicle angular rate setpoint
-	 * @param dt desired vehicle angular rate setpoint
-	 * @return [-1,1] normalized torque vector to apply to the vehicle
+   * pass in SI units, returns in SI units
+   * Returns [moments, _thrust_sp]
 	 */
-	matrix::Matrix<float, 4, 1> update(
+	matrix::Vector<float, 4> update(
 			const matrix::Vector3f &pos, // pass in current state
 			const matrix::Vector3f &vel,
 			const matrix::Quatf    &ang_att,
@@ -100,47 +73,24 @@ public:
                         const vehicle_control_mode_s &control_mode // determines which mode we should control it in
 		       	);
 	
-	
-	/**
-	 * Set the integral term to 0 to prevent windup
-	 * @see _rate_int
- */	//void resetIntegral() { _rate_int.zero(); }
-
-
 private:
 
-	matrix::Vector3f _z = matrix::Vector3f(0,0,1);
+	const matrix::Vector3f _z = matrix::Vector3f(0,0,1);
 
-	float m = 1.0;
-	float g = 9.81;
-	float hover_throttle = 0.5;
-	matrix::SquareMatrix<float, 3> J;
-	float torque_constant = 1.0;
-	float torque_max = 1.0;
+	static constexpr float g = 9.81f;
+	float hover_throttle = 0.5f;
+	matrix::SquareMatrix<float, 3> _J;
 
 	// gains
-	float kx = 1.0;
-	float kv = 1.0;
-	float kR = 1.0;
-	float kOmega = 1.0;
+	float _kx = 1.0;
+	float _kv = 1.0;
+	float _kR = 1.0;
+	float _kOmega = 1.0;
 
 
 
 	matrix::SquareMatrix<float, 3> vector_to_skew(matrix::Vector3f v);
 	matrix::Vector3f skew_to_vector(matrix::SquareMatrix<float, 3> M);
 
-	//void updateIntegral(matrix::Vector3f &rate_error, const float dt);
-	// Gains
-	//matrix::Vector3f _gain_p; ///< rate control proportional gain for all axes x, y, z
-	//matrix::Vector3f _gain_i; ///< rate control integral gain
-	//matrix::Vector3f _gain_d; ///< rate control derivative gain
-	//matrix::Vector3f _lim_int; ///< integrator term maximum absolute value
-	//matrix::Vector3f _gain_ff; ///< direct rate to torque feed forward gain only useful for helicopters
 
-	// States
-	//matrix::Vector3f _rate_int; ///< integral term of the rate controller
-
-	// Feedback from control allocation
-	//matrix::Vector<bool, 3> _control_allocator_saturation_negative;
-	//matrix::Vector<bool, 3> _control_allocator_saturation_positive;
 };
