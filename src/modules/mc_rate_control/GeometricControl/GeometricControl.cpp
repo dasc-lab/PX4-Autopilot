@@ -40,21 +40,32 @@
 
 using namespace matrix;
 
-// void RateControl::setGains(const Vector3f &P, const Vector3f &I, const Vector3f &D)
-// {
-// 	_gain_p = P;
-// 	_gain_i = I;
-// 	_gain_d = D;
-// }
-// 
-// void RateControl::setSaturationStatus(const Vector<bool, 3> &saturation_positive,
-// 				      const Vector<bool, 3> &saturation_negative)
-// {
-// 	_control_allocator_saturation_positive = saturation_positive;
-// 	_control_allocator_saturation_negative = saturation_negative;
-// }
 
-matrix::Matrix<float, 4, 1> GeometricControl::update(
+void GeometricControl::set_gains(float kx, float kv, float kR, float komega){
+
+  _kx = kx;
+  _kv = kv;
+  _kR = kR;
+  _kOmega = komega;
+
+}
+
+void GeometricControl::set_inertia(float Jxx, float Jyy, float Jzz, float Jxy, float Jxz, float Jyz){
+  _J(0,0) = Jxx;
+  _J(1,1) = Jyy;
+  _J(2,2) = Jzz;
+
+  _J(0,2) = Jxz;
+  _J(2,0) = Jxz;
+
+  _J(1,2) = Jyz;
+  _J(2,1) = Jyz;
+
+  _J(0,1) = Jxy;
+  _J(1,0) = Jxy;
+}
+
+matrix::Vector<float, 4> GeometricControl::update(
 			const matrix::Vector3f &pos, // pass in current state
 			const matrix::Vector3f &vel,
 			const matrix::Quatf    &ang_att,
@@ -64,8 +75,7 @@ matrix::Matrix<float, 4, 1> GeometricControl::update(
 		       	)
 {
 
-	// actual implementation of the geometric controller
-	
+	// actual implementation of the geometric controller	
 
 	// error in position
 	const matrix::Vector3f pos_sp(setpoint.x, setpoint.y, setpoint.z);
@@ -78,10 +88,14 @@ matrix::Matrix<float, 4, 1> GeometricControl::update(
 	const matrix::Vector3f acc_sp (setpoint.acceleration[0], setpoint.acceleration[1], setpoint.acceleration[2]);
 	
 	// create the required acceleration vector
-	const matrix::Vector3f acc = -(-kx* pos_err -kv*vel_err - g*_z + acc_sp);
+	const matrix::Vector3f acc = -_kx* pos_err -_kv*vel_err - g*_z + acc_sp;
+
+  PX4_INFO("pos: %f, %f, %f", double(pos(0)), double(pos(1)), double(pos(2)));
+  PX4_INFO("pos err: %f, %f, %f", double(pos_err(0)), double(pos_err(1)), double(pos_err(2)));
+  PX4_INFO("acc: %f, %f, %f", double(acc(0)), double(acc(1)), double(acc(2)));
 
 	// get the unit vector in the desired thrust direction
-	const matrix::Vector3f b3d = (acc.norm() < 0.01f) ? Vector3f(0,0,1) : acc.unit();
+	const matrix::Vector3f b3d = (acc.norm() < 0.01f) ? Vector3f(0,0,1) : -acc.unit();
 
 	// get the unit vector pointing in the heading direction
 	
@@ -121,40 +135,37 @@ matrix::Matrix<float, 4, 1> GeometricControl::update(
 	const Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
 
 	// compute the desired total thrust
-	const float coll_acc = acc.dot( rotMat * _z);
+	const float coll_acc = -acc.dot( rotMat * _z);
 
 	// compute the desired moments
-	const matrix::Vector3f omega_cross_Jomega = ang_rate.cross ( J * ang_rate);
+	const matrix::Vector3f omega_cross_Jomega = ang_rate.cross ( _J * ang_rate);
 
-	const matrix::Vector3f moments = -kR * rotMat_err - kOmega * ang_rate_err
+	const matrix::Vector3f moments = -_kR * rotMat_err - _kOmega * ang_rate_err
 		+ omega_cross_Jomega
-		- J * (vector_to_skew(ang_rate) * rotMat.T() * rotDes * ang_rate_sp); // technically should have additional angular acceleration terms - ignored in this implementation. 
+		- _J * (vector_to_skew(ang_rate) * rotMat.T() * rotDes * ang_rate_sp); // technically should have additional angular acceleration terms - ignored in this implementation. 
 
-	// get the angular acceleration
+	// get the angular acceleration	
+	const matrix::Vector3f ang_acc_des = _J.I() * ( moments - omega_cross_Jomega );
+
 	
-	const matrix::Vector3f ang_acc_des = J.I() * ( moments - omega_cross_Jomega );
-
-	
-	// normalize terms - convert from SI into arbitrary ranges for the drones
-	matrix::Vector3f ang_acc_des_normalized = ang_acc_des / torque_constant;
-	float coll_thrust_normalized = math::min(1.0f, math::max(0.0f, coll_acc / g * hover_throttle)); // clamp the thrust to a reasonable rangle
+	// // normalize terms - convert from SI into arbitrary ranges for the drones
+	// matrix::Vector3f ang_acc_des_normalized = ang_acc_des / torque_constant;
+	// float coll_thrust_normalized = math::min(1.0f, math::max(0.0f, coll_acc / g * hover_throttle)); // clamp the thrust to a reasonable rangle
 
 
-	// bound the max angular acceleration
-	if ( ang_acc_des_normalized.norm() > torque_max) {
-          ang_acc_des_normalized = ang_acc_des_normalized.unit() * torque_max;
-	}	
-
-
+	// // bound the max angular acceleration
+	// if ( ang_acc_des_normalized.norm() > torque_max) {
+  //         ang_acc_des_normalized = ang_acc_des_normalized.unit() * torque_max;
+	// }	
 
 	// return things
-	matrix::Matrix<float, 4,1> res;
-	res(0,0) = coll_thrust_normalized;
-	res(1,0) = ang_acc_des_normalized(0);
-	res(2,0) = ang_acc_des_normalized(1);
-	res(3,0) = ang_acc_des_normalized(2);
+	matrix::Vector<float, 4> res;
+	res(0) = ang_acc_des(0);
+	res(1) = ang_acc_des(1);
+	res(2) = ang_acc_des(2);
+	res(3) = coll_acc;
 	
-	return res;
+  return res;
 
 }
 

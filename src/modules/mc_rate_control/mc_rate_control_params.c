@@ -398,3 +398,143 @@ PARAM_DEFINE_FLOAT(MC_ACRO_SUPEXPOY, 0.7f);
  * @group Multicopter Rate Control
  */
 PARAM_DEFINE_INT32(MC_BAT_SCALE_EN, 0);
+
+
+
+
+/**
+ * Geometric Controller Param: kx
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_KX, 4.0);
+
+
+/**
+ * Geometric Controller Param: kv
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_KV, 2.0);
+
+
+/**
+ * Geometric Controller Param: kR
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_KR, 0.35);
+
+
+/**
+ * Geometric Controller Param: kOmega
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_KOMEGA, 0.15);
+
+
+/**
+ * Geometric Controller Param: Jxx
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_JXX, 0.03);
+
+
+/**
+ * Geometric Controller Param: Jyy
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_JYY, 0.03);
+/**
+ * Geometric Controller Param: Jzz
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_JZZ, 0.06);
+/**
+ * Geometric Controller Param: Jxy
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_JXY, 0.0);
+
+/**
+ * Geometric Controller Param: Jxz
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_JXZ, 0.0);
+
+/**
+ * Geometric Controller Param: Jyz
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_JYZ, 0.0);
+
+
+/**
+ * Geometric Controller Param: Torque Constant
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_TORQ_CONST, 50.0);
+
+
+
+/**
+ * Geometric Controller Param: Torque Max
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_TORQ_MAX, 0.6);
+
+
+/**
+ * Geometric Controller Param: Thrust Scaler
+ *
+ * @min 0.0
+ * @max 100.0
+ * @decimal 2
+ * @group Multicopter Rate Control
+ */
+PARAM_DEFINE_FLOAT(GEO_HOVER_THR, 0.7);
