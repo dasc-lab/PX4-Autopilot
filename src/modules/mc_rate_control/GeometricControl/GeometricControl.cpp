@@ -75,24 +75,49 @@ matrix::Vector<float, 4> GeometricControl::update(
 		       	)
 {
 
-	// actual implementation of the geometric controller	
+	// construction the required acceleration vector
+	matrix::Vector3f acc = -g*_z;
+  
+  // check the mode before we add stuff into it
+  if (control_mode.flag_control_position_enabled){
+	  
+    // error in position
+	  const matrix::Vector3f pos_sp(setpoint.x, setpoint.y, setpoint.z);
+	  const matrix::Vector3f pos_err = pos - pos_sp;
+    
+    // add the error to the acceleration vector
+    acc = acc - _kx * pos_err;
+  
+  }
+  
+  if (control_mode.flag_control_velocity_enabled){
+	  
+    // error in velocity
+    matrix::Vector3f vel_sp(0.0, 0.0, 0.0);
+    
+    if (PX4_ISFINITE(setpoint.vx)) {vel_sp(0) += setpoint.vx;}
+    if (PX4_ISFINITE(setpoint.vy)) {vel_sp(1) += setpoint.vy;}
+    if (PX4_ISFINITE(setpoint.vz)) {vel_sp(2) += setpoint.vz;}
 
-	// error in position
-	const matrix::Vector3f pos_sp(setpoint.x, setpoint.y, setpoint.z);
-	const matrix::Vector3f pos_err = pos - pos_sp;
+	  const matrix::Vector3f vel_err = vel - vel_sp;
+    
+    // add in the velocity correction
+    acc = acc - _kv*vel_err;
+  }
+  
+  if (control_mode.flag_control_acceleration_enabled){
+  
+    // error in acceleration
+    matrix::Vector3f acc_sp(0.0, 0.0, 0.0);
+    
+    for (uint8_t i=0; i< 3; i++){
+      if (PX4_ISFINITE(setpoint.acceleration[i])) {acc_sp(i) += setpoint.acceleration[i];}
+    }
+	  
+    // add in the setpoints
+    acc = acc + acc_sp;
+  }
 
-	// error in velocity
-	const matrix::Vector3f vel_sp(setpoint.vx, setpoint.vy, setpoint.vz);
-	const matrix::Vector3f vel_err = vel - vel_sp;
-	
-	const matrix::Vector3f acc_sp (setpoint.acceleration[0], setpoint.acceleration[1], setpoint.acceleration[2]);
-	
-	// create the required acceleration vector
-	const matrix::Vector3f acc = -_kx* pos_err -_kv*vel_err - g*_z + acc_sp;
-
-  PX4_INFO("pos: %f, %f, %f", double(pos(0)), double(pos(1)), double(pos(2)));
-  PX4_INFO("pos err: %f, %f, %f", double(pos_err(0)), double(pos_err(1)), double(pos_err(2)));
-  PX4_INFO("acc: %f, %f, %f", double(acc(0)), double(acc(1)), double(acc(2)));
 
 	// get the unit vector in the desired thrust direction
 	const matrix::Vector3f b3d = (acc.norm() < 0.01f) ? Vector3f(0,0,1) : -acc.unit();

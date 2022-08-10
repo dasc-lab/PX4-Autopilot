@@ -65,3 +65,5 @@ rtps:
     send:    true
   - msg:     gps_inject_data
     receive: true
+  - msg:     external_controller
+    receive: true
