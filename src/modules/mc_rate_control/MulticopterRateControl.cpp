@@ -174,8 +174,11 @@ MulticopterRateControl::Run()
 		// use rates setpoint topic
 		vehicle_rates_setpoint_s vehicle_rates_setpoint{};
 
-		if (_vehicle_control_mode.flag_control_manual_enabled && !_vehicle_control_mode.flag_control_attitude_enabled) {
+    // DASC CUSTOM: check if the external control mode has been changed
+    _external_controller_sub.update(&_external_controller);
+    if (_vehicle_control_mode.flag_control_manual_enabled && !_vehicle_control_mode.flag_control_attitude_enabled) {
       // generate the rate setpoint from sticks
+
 			manual_control_setpoint_s manual_control_setpoint;
 
 			if (_manual_control_setpoint_sub.update(&manual_control_setpoint)) {
@@ -248,35 +251,34 @@ MulticopterRateControl::Run()
 			// hijack px4 and insert our own geometric controller if sufficient flags are met
 			
 			// check that we are in offboard mode and want to use the custom geometric controller	
-			if (true){ // for testing!!
-      //if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
-				// implement the geometric controller, and update att_control
+      if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
+      // implement the geometric controller, and update att_control
 
         // load other states as well
         _vehicle_local_position_sub.update(&_vehicle_local_position);
         _trajectory_setpoint_sub.update(&_trajectory_setpoint);
         _vehicle_attitude_sub.update(&_vehicle_attitude);
 
-        if (true) {
-        // reinitialize for testing purposes
-        _trajectory_setpoint.x = 0.0;
-        _trajectory_setpoint.y = 0.0;
-        _trajectory_setpoint.z = -1.0;
-        _trajectory_setpoint.yaw = 0.0;
-        _trajectory_setpoint.yawspeed = 0.0;
-        _trajectory_setpoint.vx = 0.0;
-        _trajectory_setpoint.vy = 0.0;
-        _trajectory_setpoint.vz = 0.0;
-        _trajectory_setpoint.acceleration[0] = 0.0;
-        _trajectory_setpoint.acceleration[1] = 0.0;
-        _trajectory_setpoint.acceleration[2] = 0.0;
-        _trajectory_setpoint.jerk[0] = 0.0;
-        _trajectory_setpoint.jerk[1] = 0.0;
-        _trajectory_setpoint.jerk[2] = 0.0;
-        _trajectory_setpoint.thrust[0] = 0.0;
-        _trajectory_setpoint.thrust[1] = 0.0;
-        _trajectory_setpoint.thrust[2] = 0.0;
-        }
+        // if (true) {
+        //   // reinitialize for testing purposes
+        //   _trajectory_setpoint.x = 0.0;
+        //   _trajectory_setpoint.y = 0.0;
+        //   _trajectory_setpoint.z = -1.0;
+        //   _trajectory_setpoint.yaw = 0.0;
+        //   _trajectory_setpoint.yawspeed = 0.0;
+        //   _trajectory_setpoint.vx = 0.0;
+        //   _trajectory_setpoint.vy = 0.0;
+        //   _trajectory_setpoint.vz = 0.0;
+        //   _trajectory_setpoint.acceleration[0] = 0.0;
+        //   _trajectory_setpoint.acceleration[1] = 0.0;
+        //   _trajectory_setpoint.acceleration[2] = 0.0;
+        //   _trajectory_setpoint.jerk[0] = 0.0;
+        //   _trajectory_setpoint.jerk[1] = 0.0;
+        //   _trajectory_setpoint.jerk[2] = 0.0;
+        //   _trajectory_setpoint.thrust[0] = 0.0;
+        //   _trajectory_setpoint.thrust[1] = 0.0;
+        //   _trajectory_setpoint.thrust[2] = 0.0;
+        // }
 
         PX4_INFO("traj setpoint xyz: %f, %f, %f", double(_trajectory_setpoint.x), double(_trajectory_setpoint.y), double(_trajectory_setpoint.z));
 
