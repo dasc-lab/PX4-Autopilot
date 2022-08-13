@@ -244,16 +244,14 @@ MulticopterRateControl::Run()
 			// run rate controller
 			Vector3f att_control = _rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
 
-			/*  
+			/*
 			 * DASC LAB CUSTOM BEGIN
 			 */
 
 			// hijack px4 and insert our own geometric controller if sufficient flags are met
-			
-			// check that we are in offboard mode and want to use the custom geometric controller	
-      if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
-      // implement the geometric controller, and update att_control
 
+			// check that we are in offboard mode and want to use the custom geometric controller
+      if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
         // load other states as well
         _vehicle_local_position_sub.update(&_vehicle_local_position);
         _trajectory_setpoint_sub.update(&_trajectory_setpoint);
@@ -280,14 +278,14 @@ MulticopterRateControl::Run()
         //   _trajectory_setpoint.thrust[2] = 0.0;
         // }
 
-        PX4_INFO("traj setpoint xyz: %f, %f, %f", double(_trajectory_setpoint.x), double(_trajectory_setpoint.y), double(_trajectory_setpoint.z));
+        // PX4_INFO("traj setpoint xyz: %f, %f, %f", double(_trajectory_setpoint.x), double(_trajectory_setpoint.y), double(_trajectory_setpoint.z));
 
         // construct current state
         matrix::Vector3f _pos(
             _vehicle_local_position.x,
             _vehicle_local_position.y,
             _vehicle_local_position.z );
-				
+
         matrix::Vector3f _vel(
             _vehicle_local_position.vx,
             _vehicle_local_position.vy,
@@ -299,9 +297,10 @@ MulticopterRateControl::Run()
 				const matrix::Vector<float, 4> res = _geometric_control.update(
             _pos, _vel, _ang_att, rates, _trajectory_setpoint, _v_control_mode);
 
-        PX4_INFO("completed geometric controller");
+        // PX4_INFO("completed geometric controller");
 
-        PX4_INFO("SI: thrust, att: %f, %f, %f, %f", double(res(3)), double(res(0)), double(res(1)), double(res(2)));
+        // PX4_INFO("SI: thrust, att: %f, %f, %f, %f", double(res(3)), double(res(0)), double(res(1)), double(res(2)));
+
         // normalize the values to appropriate ranges
         _thrust_sp = math::min(1.0f, math::max(0.0f, res(3) / 9.81f * _param_geo_hover_thrust.get()));
 
@@ -313,9 +312,9 @@ MulticopterRateControl::Run()
           att_control = att_control.unit() * _param_geo_torq_max.get();
         }
 
-        PX4_INFO("thrust, att: %f, %f, %f, %f", double(_thrust_sp), double(att_control(0)), double(att_control(1)), double(att_control(2)));
+        // PX4_INFO("thrust, att: %f, %f, %f, %f", double(_thrust_sp), double(att_control(0)), double(att_control(1)), double(att_control(2)));
 
-        PX4_INFO("exiting geometric controller");
+        // PX4_INFO("exiting geometric controller");
 
 
 			}
@@ -324,7 +323,7 @@ MulticopterRateControl::Run()
 			 *  DASC LAB CUSTOM END
 			 */
 
-				
+
 			// publish rate controller status
 			rate_ctrl_status_s rate_ctrl_status{};
 			_rate_control.getRateControlStatus(rate_ctrl_status);
