@@ -203,16 +203,132 @@ RoverPositionControl::vehicle_attitude_poll()
 	}
 }
 
+// void
+// RoverPositionControl::control_local_position(const matrix::Vector2f &current_position,
+// 				       const matrix::Vector3f &current_velocity, const matrix::Vector3f &current_angular_velocity)
+// {
+// 	float dt = 0.01; // Using non zero value to a avoid division by zero
+
+// 	if (_control_position_last_called > 0) {
+// 		dt = hrt_elapsed_time(&_control_position_last_called) * 1e-6f;
+// 	}
+
+// 	_control_position_last_called = hrt_absolute_time();
+
+// 	// bool setpoint = true;
+
+// 	// TODO: validity check
+
+// 	if ((_control_mode.flag_control_auto_enabled ||
+// 	     _control_mode.flag_control_offboard_enabled) ) {
+
+// 		/* AUTONOMOUS FLIGHT */
+
+// 		_control_mode_current = UGV_POSCTRL_MODE_AUTO;
+
+// 		/* current waypoint (the one currently heading for) */
+// 		matrix::Vector2f curr_sp(_trajectory_setpoint.x, _trajectory_setpoint.y);
+//                 matrix::Vector2f pos_error( current_position(0)-curr_sp(0), current_position(1)-curr_sp(1) );
+// 		float dist_target = pos_error.norm();//sqrt( dist_sq );
+// 		// PX4_WARN("Error pos: %f %f %f",(double)pos_error(0), (double)pos_error(1),(double)dist_target);
+// 		// Velocity in body frame
+// 		const Dcmf R_to_body(Quatf(_vehicle_att.q).inversed());
+// 		const Vector3f vel = R_to_body * Vector3f(current_velocity(0), current_velocity(1), current_velocity(2));
+
+// 		const float x_vel = vel(0);
+// 		const float x_acc = _vehicle_acceleration_sub.get().xyz[0];
+
+// 		const Vector2f ground_speed_2d(current_velocity(0), current_velocity(1));
+
+// 	        switch (_pos_ctrl_state) {
+// 		case GOTO_WAYPOINT: {
+// 				if (dist_target < 0.1f){//(double)_param_nav_loiter_rad.get()) {
+// 					_pos_ctrl_state = STOPPING;  // We are closer than loiter radius to waypoint, stop.
+
+// 				} else {
+// 					Vector2f curr_pos_local{_local_pos.x, _local_pos.y};
+
+// 					// Yaw Error
+// 					// float current_yaw = 2.0f * atan2f( _vehicle_att.q[3], _vehicle_att.q[0] );
+// 					float current_yaw = Eulerf(Quatf(_vehicle_att.q)).psi();
+// 					float desired_yaw = atan2f( -pos_error(1), -pos_error(0) );
+// 					float yaw_error = current_yaw - desired_yaw;
+// 					if (yaw_error > M_PI_F){
+// 						yaw_error = 2.0f * M_PI_F - yaw_error;
+// 					}
+// 					else if (yaw_error < -M_PI_F){
+// 						yaw_error = 2.0f * M_PI_F + yaw_error;
+// 					}
+
+// 					// Always run attitude control
+// 					float yaw_rate_sp = -1.0f * _param_rover_k_yaw.get() * yaw_error;
+// 					// const float control_yaw = pid_calculate(&_angular_speed_ctrl, yaw_rate_sp, current_angular_velocity(2), 0.0, dt);
+// 					// _act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(-control_yaw, -1.0f, 1.0f);
+// 					_act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(-yaw_rate_sp, -1.0f, 1.0f);
+// 					// _act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(0.3f, -1.0f, 1.0f);
+
+// 					if ( (yaw_error>0.2f) || (yaw_error<-0.2f)){
+// 						// rotate only
+// 						_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = 0.0;
+// 						// PX4_WARN("Move rotate: %f %f %f %f %f",(double)current_yaw, (double)desired_yaw, (double)yaw_rate_sp, (double)current_angular_velocity(2), (double)control_yaw );
+// 					}
+// 					else{
+
+// 						// rotate and move
+// 						float x_vel_sp = cos(yaw_error) * _param_rover_k_pos.get() * pos_error.norm();
+// 						float mission_throttle =  _param_throttle_speed_scaler.get() * pid_calculate(&_speed_ctrl, x_vel_sp, x_vel, x_acc, dt);
+// 						// PX4_WARN("Move translate: %f %f",(double)mission_throttle, (double)x_vel_sp);
+// 						mission_throttle = math::constrain(mission_throttle, _param_throttle_min.get(), _param_throttle_max.get());
+
+// 						_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = mission_throttle;
+// 					}
+// 				}
+// 			}
+// 			break;
+
+// 		case STOPPING: {
+// 				_act_controls.control[actuator_controls_s::INDEX_YAW] = 0.0f;
+// 				_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = 0.0f;
+// 				// PX4_WARN("Stopping- dist target: %f", (double)dist_target);
+// 				if (dist_target > 0) {
+// 					_pos_ctrl_state = GOTO_WAYPOINT; // A new waypoint has arrived go to it
+// 				}
+// 			}
+// 			break;
+
+// 		default:
+// 			PX4_ERR("Unknown Rover State");
+// 			_pos_ctrl_state = STOPPING;
+// 			break;
+// 		}
+
+// 	}
+
+// }
+
+
 void
 RoverPositionControl::control_local_position(const matrix::Vector2f &current_position,
 				       const matrix::Vector3f &current_velocity, const matrix::Vector3f &current_angular_velocity)
 {
+	// float dt = 0.01; // Using non zero value to a avoid division by zero
+
+	// if (_control_position_last_called > 0) {
+	// 	dt = hrt_elapsed_time(&_control_position_last_called) * 1e-6f;
+	// }
+
+	// _control_position_last_called = hrt_absolute_time();
+	// _control_position_last_called = _control_position_last_called;
+
+	// bool setpoint = true;
+
 	// TODO: validity check
 
 	if ((_control_mode.flag_control_auto_enabled ||
 	     _control_mode.flag_control_offboard_enabled) ) {
 
 		/* AUTONOMOUS FLIGHT */
+
 		_control_mode_current = UGV_POSCTRL_MODE_AUTO;
 
 		/* current waypoint (the one currently heading for) */
@@ -220,6 +336,7 @@ RoverPositionControl::control_local_position(const matrix::Vector2f &current_pos
                 matrix::Vector2f pos_error( current_position(0)-curr_sp(0), current_position(1)-curr_sp(1) );
 		float dist_target = pos_error.norm();//sqrt( dist_sq );
 		// PX4_WARN("Error pos: %f %f %f",(double)pos_error(0), (double)pos_error(1),(double)dist_target);
+		// Velocity in body frame
 
 	        switch (_pos_ctrl_state) {
 		case GOTO_WAYPOINT: {
@@ -234,8 +351,6 @@ RoverPositionControl::control_local_position(const matrix::Vector2f &current_pos
 					float current_yaw = Eulerf(Quatf(_vehicle_att.q)).psi();
 					float desired_yaw = atan2f( -pos_error(1), -pos_error(0) );
 					float yaw_error = desired_yaw - current_yaw;
-
-					// Clip yaw to -pi to pi
 					if (yaw_error > M_PI_F){
 						yaw_error = 2.0f * M_PI_F - yaw_error;
 					}
@@ -243,16 +358,25 @@ RoverPositionControl::control_local_position(const matrix::Vector2f &current_pos
 						yaw_error = 2.0f * M_PI_F + yaw_error;
 					}
 
-					// Design angular velocity: Always run attitude control
+					// Always run attitude control
 					float yaw_rate_sp =  _param_rover_k_yaw.get() * yaw_error;
 					float x_vel_sp = 0.0f;
 
-					// Design linear velocity
-					if ( (yaw_error>0.2f) || (yaw_error<-0.2f)){  // rotate only
+					if ( (yaw_error>0.2f) || (yaw_error<-0.2f)){
+						// rotate only
+						// _act_controls.control[actuator_controls_s::INDEX_THROTTLE] = 0.0;
 						x_vel_sp = 0.0f;
+						// PX4_WARN("Move rotate: %f %f %f %f %f",(double)current_yaw, (double)desired_yaw, (double)yaw_rate_sp, (double)current_angular_velocity(2), (double)control_yaw );
 					}
-					else{					      // rotate and move
+					else{
+
+						// rotate and move
 						x_vel_sp = cos(yaw_error) * _param_rover_k_pos.get() * pos_error.norm();
+						// float mission_throttle =  _param_throttle_speed_scaler.get() * pid_calculate(&_speed_ctrl, x_vel_sp, x_vel, x_acc, dt);
+						// // PX4_WARN("Move translate: %f %f",(double)mission_throttle, (double)x_vel_sp);
+						// mission_throttle = math::constrain(mission_throttle, _param_throttle_min.get(), _param_throttle_max.get());
+
+						// _act_controls.control[actuator_controls_s::INDEX_THROTTLE] = mission_throttle;
 					}
 
 					control_velocity(current_velocity, current_angular_velocity, x_vel_sp, yaw_rate_sp);
@@ -284,31 +408,91 @@ RoverPositionControl::control_local_position(const matrix::Vector2f &current_pos
 void
 RoverPositionControl::control_velocity(const matrix::Vector3f &current_velocity, const matrix::Vector3f &current_angular_velocity, const float desired_linear_x_velocity, const float desired_angular_z_velocity)
 {
-	// assume desired velocity in body frame: Unicycle type of control
-
+	// assume body frame
+	// const Vector3f desired_velocity{_trajectory_setpoint.vx, _trajectory_setpoint.vy, _trajectory_setpoint.vz};
 	float dt = 0.01; // Using non zero value to a avoid division by zero
 
-	// get body frame current velocity
-	const Dcmf R_to_body(Quatf(_vehicle_att.q).inversed());
-	const Vector3f vel = R_to_body * Vector3f(current_velocity(0), current_velocity(1), current_velocity(2));
-	const float x_vel = vel(0);
+	// if (_control_position_last_called > 0) {
+	// 	dt = hrt_elapsed_time(&_control_position_last_called) * 1e-6f;
+	// }
 
-	// get vehicle acceleration for derivative term
-	// TODO: convert to body frame
-	// const float x_acc = _vehicle_acceleration_sub.get().xyz[0];
-	Vector3f acc_body = R_to_body * Vector3f( _vehicle_acceleration_sub.get().xyz[0], _vehicle_acceleration_sub.get().xyz[1], _vehicle_acceleration_sub.get().xyz[2] );
-	const float x_acc = acc_body(0);
+	// _control_position_last_called = hrt_absolute_time();
 
-	// get Thrust command
-	const float control_throttle =  _param_rover_vel_ff.get() * desired_linear_x_velocity +  pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
+	// const float mission_throttle = _param_throttle_cruise.get();
+	// const float desired_speed = desired_velocity.norm();
+	// const float desired_linear_x_velocity = desired_velocity(0);
+	// const float desired_angular_z_velocity = _trajectory_setpoint.yawspeed;
 
-	//Constrain maximum throttle to mission throttle
-	_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(control_throttle, -_param_throttle_max.get(), _param_throttle_max.get());
+	// if (desired_speed > 0.01f) {
 
-	// get angular torque command
-	const float control_yaw = _param_rover_omg_ff.get() * desired_angular_z_velocity + pid_calculate(&_angular_speed_ctrl, desired_angular_z_velocity, current_angular_velocity(2), 0.0, dt);
-	_act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(control_yaw, -1.0f, 1.0f);
+		// convert actual velocity to body frame; NEEDED
+		const Dcmf R_to_body(Quatf(_vehicle_att.q).inversed());
+		const Vector3f vel = R_to_body * Vector3f(current_velocity(0), current_velocity(1), current_velocity(2));
+
+		const float x_vel = vel(0);
+		const float x_acc = _vehicle_acceleration_sub.get().xyz[0];
+
+		const float control_throttle =  _param_rover_vel_ff.get() * desired_linear_x_velocity +  pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
+
+		//Constrain maximum throttle to mission throttle
+		// _act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(control_throttle, _param_throttle_min.get(), _param_throttle_max.get());
+		_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(control_throttle, -_param_throttle_max.get(), _param_throttle_max.get());
+		// _act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(0.7f, _param_throttle_min.get(), _param_throttle_max.get());
+
+		// PX4_WARN("Vel: %f, desired_vel: %f, wz_d: %f, wz: %f", (double)x_vel, (double)desired_linear_x_velocity, (double)desired_angular_z_velocity, (double)current_angular_velocity(2));
+
+		const float control_yaw = _param_rover_omg_ff.get() * desired_angular_z_velocity + pid_calculate(&_angular_speed_ctrl, desired_angular_z_velocity, current_angular_velocity(2), 0.0, dt);
+		// des-> negative
+
+		// final: positive which is wrong
+
+		_act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(control_yaw, -1.0f, 1.0f);
+		// _act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(0.2f, -1.0f, 1.0f);
+
+		// PX4_WARN("Output: th: %f, yaw: %f", (double)control_throttle, (double)control_yaw);
 }
+
+// void
+// RoverPositionControl::control_velocity(const matrix::Vector3f &current_velocity, const matrix::Vector3f &current_angular_velocity, const float desired_linear_x_velocity, const float desired_angular_z_velocity)
+// {
+// 	// assume body frame
+// 	// const Vector3f desired_velocity{_trajectory_setpoint.vx, _trajectory_setpoint.vy, _trajectory_setpoint.vz};
+// 	float dt = 0.01; // Using non zero value to a avoid division by zero
+
+// 	if (_control_position_last_called > 0) {
+// 		dt = hrt_elapsed_time(&_control_position_last_called) * 1e-6f;
+// 	}
+
+// 	_control_position_last_called = hrt_absolute_time();
+
+// 	// const float mission_throttle = _param_throttle_cruise.get();
+// 	// const float desired_speed = desired_velocity.norm();
+// 	// const float desired_linear_x_velocity = desired_velocity(0);
+// 	// const float desired_angular_z_velocity = _trajectory_setpoint.yawspeed;
+
+// 	// if (desired_speed > 0.01f) {
+
+// 		// convert actual velocity to body frame; NEEDED
+// 		const Dcmf R_to_body(Quatf(_vehicle_att.q).inversed());
+// 		const Vector3f vel = R_to_body * Vector3f(current_velocity(0), current_velocity(1), current_velocity(2));
+
+// 		const float x_vel = vel(0);
+// 		const float x_acc = _vehicle_acceleration_sub.get().xyz[0];
+
+// 		const float control_throttle = pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
+
+// 		//Constrain maximum throttle to mission throttle
+// 		_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(control_throttle, _param_throttle_min.get(), _param_throttle_max.get());
+// 		// _act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(0.7f, _param_throttle_min.get(), _param_throttle_max.get());
+
+// 		// PX4_WARN("Vel: %f, desired_vel: %f, wz_d: %f, wz: %f", (double)x_vel, (double)desired_linear_x_velocity, (double)desired_angular_z_velocity, (double)current_angular_velocity(2));
+
+// 		const float control_yaw = pid_calculate(&_angular_speed_ctrl, desired_angular_z_velocity, current_angular_velocity(2), 0.0, dt);
+// 		_act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(-control_yaw, -1.0f, 1.0f);
+// 		// _act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(0.2f, -1.0f, 1.0f);
+
+// 		// PX4_WARN("Output: th: %f, yaw: %f", (double)control_throttle, (double)control_yaw);
+// }
 
 void
 RoverPositionControl::control_attitude(const vehicle_attitude_s &att, const vehicle_attitude_setpoint_s &att_sp)
