@@ -64,6 +64,15 @@
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
 
+// DASC-CUSTOM
+#include <GeometricControl.hpp>
+#include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/vehicle_local_position_setpoint.h>
+#include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/external_controller.h>
+#include <uORB/topics/vehicle_attitude.h>
+
+
 using namespace time_literals;
 
 class MulticopterRateControl : public ModuleBase<MulticopterRateControl>, public ModuleParams, public px4::WorkItem
@@ -97,6 +106,7 @@ private:
 	void publishThrustSetpoint(const hrt_abstime &timestamp_sample);
 
 	RateControl _rate_control; ///< class for rate control calculations
+	GeometricControl _geometric_control; ///< class for geometric control calculations
 
 	uORB::Subscription _battery_status_sub{ORB_ID(battery_status)};
 	uORB::Subscription _landing_gear_sub{ORB_ID(landing_gear)};
@@ -107,6 +117,13 @@ private:
 	uORB::Subscription _vehicle_angular_acceleration_sub{ORB_ID(vehicle_angular_acceleration)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
+
+  // DASC CUSTOM
+	uORB::Subscription _external_controller_sub{ORB_ID(external_controller)};
+  uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
+  uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
+  uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
+
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
@@ -124,7 +141,15 @@ private:
 	vehicle_control_mode_s		_v_control_mode{};
 	vehicle_status_s		_vehicle_status{};
 
-	bool _actuators_0_circuit_breaker_enabled{false};	/**< circuit breaker to suppress output */
+  // DASC CUSOM 
+  external_controller_s                 _external_controller{};
+	vehicle_attitude_s                    _vehicle_attitude{};
+  vehicle_local_position_s              _vehicle_local_position{};
+  vehicle_local_position_setpoint_s     _trajectory_setpoint{};
+
+
+  
+  bool _actuators_0_circuit_breaker_enabled{false};	/**< circuit breaker to suppress output */
 	bool _landed{true};
 	bool _maybe_landed{true};
 
@@ -177,8 +202,24 @@ private:
 
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
 
-		(ParamInt<px4::params::CBRK_RATE_CTRL>) _param_cbrk_rate_ctrl
-	)
+		(ParamInt<px4::params::CBRK_RATE_CTRL>) _param_cbrk_rate_ctrl,
+	
+    // DASC CUSTOM PARAMS
+    (ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
+    (ParamFloat<px4::params::GEO_KV>) _param_geo_kv,
+    (ParamFloat<px4::params::GEO_KR>) _param_geo_kR,
+    (ParamFloat<px4::params::GEO_KOMEGA>) _param_geo_kOmega,
+    (ParamFloat<px4::params::GEO_JXX>) _param_geo_Jxx,
+    (ParamFloat<px4::params::GEO_JYY>) _param_geo_Jyy,
+    (ParamFloat<px4::params::GEO_JZZ>) _param_geo_Jzz,
+    (ParamFloat<px4::params::GEO_JXY>) _param_geo_Jxy,
+    (ParamFloat<px4::params::GEO_JXZ>) _param_geo_Jxz,
+    (ParamFloat<px4::params::GEO_JYZ>) _param_geo_Jyz,
+    (ParamFloat<px4::params::GEO_TORQ_MAX>) _param_geo_torq_max,
+    (ParamFloat<px4::params::GEO_TORQ_CONST>) _param_geo_torq_const,
+    (ParamFloat<px4::params::GEO_HOVER_THR>) _param_geo_hover_thrust
+  )
+  
 
 	matrix::Vector3f _acro_rate_max;	/**< max attitude rates in acro mode */
 
