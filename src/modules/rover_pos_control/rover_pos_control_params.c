@@ -49,6 +49,34 @@
  */
 
 /**
+ * Rover Deadband for linear Body X motion
+ *
+ * This is the deadband term for computing linear feedforward term
+ *
+ * @unit %m/s
+ * @min 0.000
+ * @max 1.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ROVER_VEL_DB, 0.2f);
+
+/**
+ * Rover Deadband for angular Body Z(yaw) motion
+ *
+ * This is the deadband term for computing angular feedforward term
+ *
+ * @unit %m/s
+ * @min 0.000
+ * @max 1.0
+ * @decimal 3
+ * @increment 0.005
+ * @group Rover Position Control
+ */
+PARAM_DEFINE_FLOAT(ROVER_OMG_DB, 0.2f);
+
+/**
  * Rover FF term for Body X velocity control
  *
  * This is the FF term for the linear speed

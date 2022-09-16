@@ -199,6 +199,8 @@ private:
 		(ParamFloat<px4::params::ROVER_K_YAW>) _param_rover_k_yaw,
 		(ParamFloat<px4::params::ROVER_VEL_FF>) _param_rover_vel_ff,
 		(ParamFloat<px4::params::ROVER_OMG_FF>) _param_rover_omg_ff,
+		(ParamFloat<px4::params::ROVER_VEL_DB>) _param_linear_deadband,
+		(ParamFloat<px4::params::ROVER_OMG_DB>) _param_angular_deadband,
 		///////////////////////////////////////////////////////////////
 		(ParamFloat<px4::params::GND_SPEED_THR_SC>) _param_throttle_speed_scaler,
 

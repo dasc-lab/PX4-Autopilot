@@ -300,13 +300,21 @@ RoverPositionControl::control_velocity(const matrix::Vector3f &current_velocity,
 	const float x_acc = acc_body(0);
 
 	// get Thrust command
-	const float control_throttle =  _param_rover_vel_ff.get() * desired_linear_x_velocity +  pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
-
+	if (desired_linear_x_velocity>0.0){
+		const float vel_ff = _param_linear_deadband_pos.get() * ( 1.0f - _param_rover_vel_ff.get() * desired_linear_x_velocity   ) + _param_rover_vel_ff.get() * desired_linear_x_velocity;
+		const float control_throttle =  vel_ff +  pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
+	// const float control_throttle =  _param_rover_vel_ff.get() * desired_linear_x_velocity +  pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
+	}
+	else{
+		const float vel_ff = _param_linear_deadband_neg.get() * ( 1.0f - _param_rover_vel_ff.get() * desired_linear_x_velocity   ) + _param_rover_vel_ff.get() * desired_linear_x_velocity;
+		const float control_throttle =  vel_ff +  pid_calculate(&_speed_ctrl, desired_linear_x_velocity, x_vel, x_acc, dt);
+	}
 	//Constrain maximum throttle to mission throttle
 	_act_controls.control[actuator_controls_s::INDEX_THROTTLE] = math::constrain(control_throttle, -_param_throttle_max.get(), _param_throttle_max.get());
 
 	// get angular torque command
-	const float control_yaw = _param_rover_omg_ff.get() * desired_angular_z_velocity + pid_calculate(&_angular_speed_ctrl, desired_angular_z_velocity, current_angular_velocity(2), 0.0, dt);
+	const float yaw_ff = _param_angular_deadband.get() * ( 1.0f - _param_rover_omg_ff.get() * desired_angular_z_velocity   ) + _param_rover_omg_ff.get() * desired_angular_z_velocity;
+	const float control_yaw = yaw_ff + pid_calculate(&_angular_speed_ctrl, desired_angular_z_velocity, current_angular_velocity(2), 0.0, dt);
 	_act_controls.control[actuator_controls_s::INDEX_YAW] = math::constrain(control_yaw, -1.0f, 1.0f);
 }
 
