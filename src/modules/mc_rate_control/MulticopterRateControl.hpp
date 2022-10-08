@@ -118,11 +118,11 @@ private:
 	uORB::Subscription _vehicle_rates_setpoint_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 
-  // DASC CUSTOM
+	// DASC CUSTOM
 	uORB::Subscription _external_controller_sub{ORB_ID(external_controller)};
-  uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
-  uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
-  uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
+	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
+	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
+	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
@@ -140,12 +140,12 @@ private:
 	vehicle_control_mode_s	_vehicle_control_mode{};
 	vehicle_status_s	_vehicle_status{};
 
-  // DASC CUSTOM
-  external_controller_s                 _external_controller{};
+	// DASC CUSTOM
+	external_controller_s                 _external_controller{};
 	vehicle_attitude_s                    _vehicle_attitude{};
-  vehicle_local_position_s              _vehicle_local_position{};
-  vehicle_local_position_setpoint_s     _trajectory_setpoint{};
-  bool _landed{true};
+	vehicle_local_position_s              _vehicle_local_position{};
+	vehicle_local_position_setpoint_s     _trajectory_setpoint{};
+	bool _landed{true};
 	bool _maybe_landed{true};
 
 	hrt_abstime _last_run{0};
@@ -198,20 +198,20 @@ private:
 
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
 
-    // DASC CUSTOM PARAMS
-    (ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
-    (ParamFloat<px4::params::GEO_KV>) _param_geo_kv,
-    (ParamFloat<px4::params::GEO_KR>) _param_geo_kR,
-    (ParamFloat<px4::params::GEO_KOMEGA>) _param_geo_kOmega,
-    (ParamFloat<px4::params::GEO_JXX>) _param_geo_Jxx,
-    (ParamFloat<px4::params::GEO_JYY>) _param_geo_Jyy,
-    (ParamFloat<px4::params::GEO_JZZ>) _param_geo_Jzz,
-    (ParamFloat<px4::params::GEO_JXY>) _param_geo_Jxy,
-    (ParamFloat<px4::params::GEO_JXZ>) _param_geo_Jxz,
-    (ParamFloat<px4::params::GEO_JYZ>) _param_geo_Jyz,
-    (ParamFloat<px4::params::GEO_TORQ_MAX>) _param_geo_torq_max,
-    (ParamFloat<px4::params::GEO_TORQ_CONST>) _param_geo_torq_const,
-    (ParamFloat<px4::params::GEO_HOVER_THR>) _param_geo_hover_thrust
-  )
+		// DASC CUSTOM PARAMS
+		(ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
+		(ParamFloat<px4::params::GEO_KV>) _param_geo_kv,
+		(ParamFloat<px4::params::GEO_KR>) _param_geo_kR,
+		(ParamFloat<px4::params::GEO_KOMEGA>) _param_geo_kOmega,
+		(ParamFloat<px4::params::GEO_JXX>) _param_geo_Jxx,
+		(ParamFloat<px4::params::GEO_JYY>) _param_geo_Jyy,
+		(ParamFloat<px4::params::GEO_JZZ>) _param_geo_Jzz,
+		(ParamFloat<px4::params::GEO_JXY>) _param_geo_Jxy,
+		(ParamFloat<px4::params::GEO_JXZ>) _param_geo_Jxz,
+		(ParamFloat<px4::params::GEO_JYZ>) _param_geo_Jyz,
+		(ParamFloat<px4::params::GEO_TORQ_MAX>) _param_geo_torq_max,
+		(ParamFloat<px4::params::GEO_TORQ_CONST>) _param_geo_torq_const,
+		(ParamFloat<px4::params::GEO_HOVER_THR>) _param_geo_hover_thrust
+	)
 
 };
