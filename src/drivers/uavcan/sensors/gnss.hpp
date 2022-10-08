@@ -115,7 +115,6 @@ private:
 	uavcan::Subscriber<uavcan::equipment::gnss::Auxiliary, AuxiliaryCbBinder> _sub_auxiliary;
 	uavcan::Subscriber<uavcan::equipment::gnss::Fix, FixCbBinder> _sub_fix;
 	uavcan::Subscriber<uavcan::equipment::gnss::Fix2, Fix2CbBinder> _sub_fix2;
-
 	uavcan::Publisher<ardupilot::gnss::MovingBaselineData> _pub_moving_baseline_data;
 	uavcan::Publisher<uavcan::equipment::gnss::RTCMStream> _pub_rtcm_stream;
 

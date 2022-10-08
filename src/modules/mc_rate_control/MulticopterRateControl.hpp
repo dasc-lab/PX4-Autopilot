@@ -144,7 +144,7 @@ private:
 	vehicle_attitude_s                    _vehicle_attitude{};
   vehicle_local_position_s              _vehicle_local_position{};
   vehicle_local_position_setpoint_s     _trajectory_setpoint{};
-	bool _landed{true};
+  bool _landed{true};
 	bool _maybe_landed{true};
 
 	hrt_abstime _last_run{0};
@@ -197,7 +197,8 @@ private:
 
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
 
-		(ParamInt<px4::params::CBRK_RATE_CTRL>) _param_cbrk_rate_ctrl,
+    (ParamInt<px4::params::CBRK_RATE_CTRL>) _param_cbrk_rate_ctrl,
+
     // DASC CUSTOM PARAMS
     (ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
     (ParamFloat<px4::params::GEO_KV>) _param_geo_kv,
@@ -213,4 +214,5 @@ private:
     (ParamFloat<px4::params::GEO_TORQ_CONST>) _param_geo_torq_const,
     (ParamFloat<px4::params::GEO_HOVER_THR>) _param_geo_hover_thrust
   )
+
 };

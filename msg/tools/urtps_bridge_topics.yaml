@@ -39,17 +39,13 @@ rtps:
     receive: true
   - msg:     vehicle_local_position_setpoint
     receive: true
-  - msg:     vehicle_attitude_setpoint
+  - msg:     trajectory_setpoint
     receive: true
   - msg:     vehicle_rates_setpoint
-    receive: true
-  - msg:     trajectory_setpoint
     receive: true
   - msg:     vehicle_command
     receive: true
   - msg:     vehicle_attitude_setpoint
-    receive: true
-  - msg:     vehicle_rates_setpoint
     receive: true
   - msg:     vehicle_odometry
     receive: true
