@@ -50,35 +50,35 @@
 class GeometricControl
 {
 public:
-	GeometricControl(){
-    _J.setIdentity();
+	GeometricControl()
+	{
+		_J.setIdentity();
 	}
 	~GeometricControl() = default;
 
-  // functions to set internal parameters
-  void set_gains(float kx, float kv, float kR, float komega);
-  void set_inertia(float Jxx, float Jyy, float Jzz, float Jxy=0.0f, float Jxz=0.0f, float Jyz=0.0f);
+	// functions to set internal parameters
+	void set_gains(float kx, float kv, float kR, float komega);
+	void set_inertia(float Jxx, float Jyy, float Jzz, float Jxy = 0.0f, float Jxz = 0.0f, float Jyz = 0.0f);
 
 	/**
 	 * Run one control loop cycle calculation
-   * pass in SI units, returns in SI units
-   * Returns [moments, _thrust_sp]
+	* pass in SI units, returns in SI units
+	* Returns [moments, _thrust_sp]
 	 */
 	matrix::Vector<float, 4> update(
-			const matrix::Vector3f &pos, // pass in current state
-			const matrix::Vector3f &vel,
-			const matrix::Quatf    &ang_att,
-			const matrix::Vector3f &ang_rate,
-			const vehicle_local_position_setpoint_s &setpoint, // pass in setpoint
-                        const vehicle_control_mode_s &control_mode // determines which mode we should control it in
-		       	);
-	
+		const matrix::Vector3f &pos, // pass in current state
+		const matrix::Vector3f &vel,
+		const matrix::Quatf    &ang_att,
+		const matrix::Vector3f &ang_rate,
+		const vehicle_local_position_setpoint_s &setpoint, // pass in setpoint
+		const vehicle_control_mode_s &control_mode // determines which mode we should control it in
+	);
+
 private:
 
-	const matrix::Vector3f _z = matrix::Vector3f(0,0,1);
+	const matrix::Vector3f _z = matrix::Vector3f(0, 0, 1);
 
 	static constexpr float g = 9.81f;
-	float hover_throttle = 0.5f;
 	matrix::SquareMatrix<float, 3> _J;
 
 	// gains

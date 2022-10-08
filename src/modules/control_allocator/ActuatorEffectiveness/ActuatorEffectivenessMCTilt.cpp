@@ -51,7 +51,7 @@ ActuatorEffectivenessMCTilt::getEffectivenessMatrix(Configuration &configuration
 	}
 
 	// MC motors
-	_mc_rotors.enablePropellerTorque(!_tilts.hasYawControl());
+	_mc_rotors.enableYawByDifferentialThrust(!_tilts.hasYawControl());
 	const bool rotors_added_successfully = _mc_rotors.addActuators(configuration);
 
 	// Tilts
@@ -77,7 +77,8 @@ ActuatorEffectivenessMCTilt::getEffectivenessMatrix(Configuration &configuration
 }
 
 void ActuatorEffectivenessMCTilt::updateSetpoint(const matrix::Vector<float, NUM_AXES> &control_sp,
-		int matrix_index, ActuatorVector &actuator_sp)
+		int matrix_index, ActuatorVector &actuator_sp, const matrix::Vector<float, NUM_ACTUATORS> &actuator_min,
+		const matrix::Vector<float, NUM_ACTUATORS> &actuator_max)
 {
 	actuator_sp += _tilt_offsets;
 	// TODO: dynamic matrix update

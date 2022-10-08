@@ -55,7 +55,7 @@
 #define MASK_GPS_HSPD   (1<<7)
 #define MASK_GPS_VSPD   (1<<8)
 
-bool Ekf::collect_gps(const gps_message &gps)
+bool Ekf::collect_gps(const gpsMessage &gps)
 {
 	// Run GPS checks always
 	_gps_checks_passed = gps_is_good(gps);
@@ -66,23 +66,25 @@ bool Ekf::collect_gps(const gps_message &gps)
 		const double lon = gps.lon * 1.0e-7;
 
 		if (!_pos_ref.isInitialized()) {
-			_pos_ref.initReference(lat, lon, _time_last_imu);
+			_pos_ref.initReference(lat, lon, gps.time_usec);
 
 			// if we are already doing aiding, correct for the change in position since the EKF started navigating
 			if (isHorizontalAidingActive()) {
 				double est_lat;
 				double est_lon;
 				_pos_ref.reproject(-_state.pos(0), -_state.pos(1), est_lat, est_lon);
-				_pos_ref.initReference(est_lat, est_lon, _time_last_imu);
+				_pos_ref.initReference(est_lat, est_lon, gps.time_usec);
 			}
 		}
 
 		// Take the current GPS height and subtract the filter height above origin to estimate the GPS height of the origin
-		_gps_alt_ref = 1e-3f * (float)gps.alt + _state.pos(2);
+		if (!PX4_ISFINITE(_gps_alt_ref)) {
+			_gps_alt_ref = 1e-3f * (float)gps.alt + _state.pos(2);
+		}
+
 		_NED_origin_initialised = true;
 
 		_earth_rate_NED = calcEarthRateNED((float)math::radians(_pos_ref.getProjectionReferenceLat()));
-		_last_gps_origin_time_us = _time_last_imu;
 
 		const bool declination_was_valid = PX4_ISFINITE(_mag_declination_gps);
 
@@ -92,7 +94,7 @@ bool Ekf::collect_gps(const gps_message &gps)
 		_mag_strength_gps = get_mag_strength_gauss(lat, lon);
 
 		// request a reset of the yaw using the new declination
-		if ((_params.mag_fusion_type != MAG_FUSE_TYPE_NONE)
+		if ((_params.mag_fusion_type != MagFuseType::NONE)
 		     && !declination_was_valid) {
 			_mag_yaw_reset_req = true;
 		}
@@ -120,7 +122,7 @@ bool Ekf::collect_gps(const gps_message &gps)
 			_mag_strength_gps = get_mag_strength_gauss(lat, lon);
 
 			// request mag yaw reset if there's a mag declination for the first time
-			if (_params.mag_fusion_type != MAG_FUSE_TYPE_NONE) {
+			if (_params.mag_fusion_type != MagFuseType::NONE) {
 				if (!declination_was_valid && PX4_ISFINITE(_mag_declination_gps)) {
 					_mag_yaw_reset_req = true;
 				}
@@ -141,7 +143,7 @@ bool Ekf::collect_gps(const gps_message &gps)
  * Checks are activated using the EKF2_GPS_CHECK bitmask parameter
  * Checks are adjusted using the EKF2_REQ_* parameters
 */
-bool Ekf::gps_is_good(const gps_message &gps)
+bool Ekf::gps_is_good(const gpsMessage &gps)
 {
 	// Check the fix type
 	_gps_check_fail_status.flags.fix = (gps.fix_type < 3);
@@ -165,7 +167,7 @@ bool Ekf::gps_is_good(const gps_message &gps)
 
 	// Calculate time lapsed since last update, limit to prevent numerical errors and calculate a lowpass filter coefficient
 	constexpr float filt_time_const = 10.0f;
-	const float dt = math::constrain(float(int64_t(_time_last_imu) - int64_t(_gps_pos_prev.getProjectionReferenceTimestamp())) * 1e-6f, 0.001f, filt_time_const);
+	const float dt = math::constrain(float(int64_t(gps.time_usec) - int64_t(_gps_pos_prev.getProjectionReferenceTimestamp())) * 1e-6f, 0.001f, filt_time_const);
 	const float filter_coef = dt / filt_time_const;
 
 	// The following checks are only valid when the vehicle is at rest
@@ -183,7 +185,7 @@ bool Ekf::gps_is_good(const gps_message &gps)
 
 		} else {
 			// no previous position has been set
-			_gps_pos_prev.initReference(lat, lon, _time_last_imu);
+			_gps_pos_prev.initReference(lat, lon, gps.time_usec);
 			_gps_alt_prev = 1e-3f * (float)gps.alt;
 		}
 
@@ -226,7 +228,7 @@ bool Ekf::gps_is_good(const gps_message &gps)
 	}
 
 	// save GPS fix for next time
-	_gps_pos_prev.initReference(lat, lon, _time_last_imu);
+	_gps_pos_prev.initReference(lat, lon, gps.time_usec);
 	_gps_alt_prev = 1e-3f * (float)gps.alt;
 
 	// Check  the filtered difference between GPS and EKF vertical velocity
@@ -237,7 +239,7 @@ bool Ekf::gps_is_good(const gps_message &gps)
 
 	// assume failed first time through
 	if (_last_gps_fail_us == 0) {
-		_last_gps_fail_us = _time_last_imu;
+		_last_gps_fail_us = _imu_sample_delayed.time_us;
 	}
 
 	// if any user selected checks have failed, record the fail time
@@ -253,10 +255,10 @@ bool Ekf::gps_is_good(const gps_message &gps)
 		(_gps_check_fail_status.flags.hspeed  && (_params.gps_check_mask & MASK_GPS_HSPD)) ||
 		(_gps_check_fail_status.flags.vspeed  && (_params.gps_check_mask & MASK_GPS_VSPD))
 	) {
-		_last_gps_fail_us = _time_last_imu;
+		_last_gps_fail_us = _imu_sample_delayed.time_us;
 
 	} else {
-		_last_gps_pass_us = _time_last_imu;
+		_last_gps_pass_us = _imu_sample_delayed.time_us;
 	}
 
 	// continuous period without fail of x seconds required to return a healthy status

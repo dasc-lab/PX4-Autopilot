@@ -46,7 +46,7 @@ using math::radians;
 MulticopterRateControl::MulticopterRateControl(bool vtol) :
 	ModuleParams(nullptr),
 	WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
-	_actuators_0_pub(vtol ? ORB_ID(actuator_controls_virtual_mc) : ORB_ID(actuator_controls_0)),
+	_actuator_controls_0_pub(vtol ? ORB_ID(actuator_controls_virtual_mc) : ORB_ID(actuator_controls_0)),
 	_loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle"))
 {
 	_vehicle_status.vehicle_type = vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
@@ -94,12 +94,10 @@ MulticopterRateControl::parameters_updated()
 	// manual rate control acro mode rate limits
 	_acro_rate_max = Vector3f(radians(_param_mc_acro_r_max.get()), radians(_param_mc_acro_p_max.get()),
 				  radians(_param_mc_acro_y_max.get()));
-
-	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled_by_val(_param_cbrk_rate_ctrl.get(), CBRK_RATE_CTRL_KEY);
-
-  // DASC CUSTOM
-  _geometric_control.set_gains(_param_geo_kx.get(), _param_geo_kv.get(), _param_geo_kR.get(), _param_geo_kOmega.get());
-  _geometric_control.set_inertia(_param_geo_Jxx.get(), _param_geo_Jyy.get(), _param_geo_Jzz.get(), _param_geo_Jxy.get(), _param_geo_Jxz.get(), _param_geo_Jyz.get());
+	// DASC CUSTOM
+	_geometric_control.set_gains(_param_geo_kx.get(), _param_geo_kv.get(), _param_geo_kR.get(), _param_geo_kOmega.get());
+	_geometric_control.set_inertia(_param_geo_Jxx.get(), _param_geo_Jyy.get(), _param_geo_Jzz.get(), _param_geo_Jxy.get(),
+				       _param_geo_Jxz.get(), _param_geo_Jyz.get());
 
 }
 
@@ -143,7 +141,7 @@ MulticopterRateControl::Run()
 		const Vector3f rates{angular_velocity.xyz};
 
 		/* check for updates in other topics */
-		_v_control_mode_sub.update(&_v_control_mode);
+		_vehicle_control_mode_sub.update(&_vehicle_control_mode);
 
 		if (_vehicle_land_detected_sub.updated()) {
 			vehicle_land_detected_s vehicle_land_detected;
@@ -174,11 +172,15 @@ MulticopterRateControl::Run()
 			}
 		}
 
-    // DASC CUSTOM: check if the external control mode has been changed
-    _external_controller_sub.update(&_external_controller);
+		// use rates setpoint topic
+		vehicle_rates_setpoint_s vehicle_rates_setpoint{};
 
-		if (_v_control_mode.flag_control_manual_enabled && !_v_control_mode.flag_control_attitude_enabled) {
+		// DASC CUSTOM: check if the external control mode has been changed
+		_external_controller_sub.update(&_external_controller);
+
+		if (_vehicle_control_mode.flag_control_manual_enabled && !_vehicle_control_mode.flag_control_attitude_enabled) {
 			// generate the rate setpoint from sticks
+
 			manual_control_setpoint_s manual_control_setpoint;
 
 			if (_manual_control_setpoint_sub.update(&manual_control_setpoint)) {
@@ -188,39 +190,34 @@ MulticopterRateControl::Run()
 					math::superexpo(-manual_control_setpoint.x, _param_mc_acro_expo.get(), _param_mc_acro_supexpo.get()),
 					math::superexpo(manual_control_setpoint.r, _param_mc_acro_expo_y.get(), _param_mc_acro_supexpoy.get())};
 
-				_rates_sp = man_rate_sp.emult(_acro_rate_max);
-				_thrust_sp = math::constrain(manual_control_setpoint.z, 0.0f, 1.0f);
+				_rates_setpoint = man_rate_sp.emult(_acro_rate_max);
+				_thrust_setpoint(2) = -math::constrain(manual_control_setpoint.z, 0.0f, 1.0f);
+				_thrust_setpoint(0) = _thrust_setpoint(1) = 0.f;
 
 				// publish rate setpoint
-				vehicle_rates_setpoint_s v_rates_sp{};
-				v_rates_sp.roll = _rates_sp(0);
-				v_rates_sp.pitch = _rates_sp(1);
-				v_rates_sp.yaw = _rates_sp(2);
-				v_rates_sp.thrust_body[0] = 0.0f;
-				v_rates_sp.thrust_body[1] = 0.0f;
-				v_rates_sp.thrust_body[2] = -_thrust_sp;
-				v_rates_sp.timestamp = hrt_absolute_time();
+				vehicle_rates_setpoint.roll = _rates_setpoint(0);
+				vehicle_rates_setpoint.pitch = _rates_setpoint(1);
+				vehicle_rates_setpoint.yaw = _rates_setpoint(2);
+				_thrust_setpoint.copyTo(vehicle_rates_setpoint.thrust_body);
+				vehicle_rates_setpoint.timestamp = hrt_absolute_time();
 
-				_v_rates_sp_pub.publish(v_rates_sp);
+				_vehicle_rates_setpoint_pub.publish(vehicle_rates_setpoint);
 			}
 
-		} else {
-			// use rates setpoint topic
-			vehicle_rates_setpoint_s v_rates_sp;
-
-			if (_v_rates_sp_sub.update(&v_rates_sp)) {
-				_rates_sp(0) = PX4_ISFINITE(v_rates_sp.roll)  ? v_rates_sp.roll  : rates(0);
-				_rates_sp(1) = PX4_ISFINITE(v_rates_sp.pitch) ? v_rates_sp.pitch : rates(1);
-				_rates_sp(2) = PX4_ISFINITE(v_rates_sp.yaw)   ? v_rates_sp.yaw   : rates(2);
-				_thrust_sp = -v_rates_sp.thrust_body[2];
+		} else if (_vehicle_rates_setpoint_sub.update(&vehicle_rates_setpoint)) {
+			if (_vehicle_rates_setpoint_sub.copy(&vehicle_rates_setpoint)) {
+				_rates_setpoint(0) = PX4_ISFINITE(vehicle_rates_setpoint.roll)  ? vehicle_rates_setpoint.roll  : rates(0);
+				_rates_setpoint(1) = PX4_ISFINITE(vehicle_rates_setpoint.pitch) ? vehicle_rates_setpoint.pitch : rates(1);
+				_rates_setpoint(2) = PX4_ISFINITE(vehicle_rates_setpoint.yaw)   ? vehicle_rates_setpoint.yaw   : rates(2);
+				_thrust_setpoint = Vector3f(vehicle_rates_setpoint.thrust_body);
 			}
 		}
 
 		// run the rate controller
-		if (_v_control_mode.flag_control_rates_enabled && !_actuators_0_circuit_breaker_enabled) {
+		if (_vehicle_control_mode.flag_control_rates_enabled) {
 
 			// reset integral if disarmed
-			if (!_v_control_mode.flag_armed || _vehicle_status.vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
+			if (!_vehicle_control_mode.flag_armed || _vehicle_status.vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
 				_rate_control.resetIntegral();
 			}
 
@@ -247,7 +244,7 @@ MulticopterRateControl::Run()
 			}
 
 			// run rate controller
-			Vector3f att_control = _rate_control.update(rates, _rates_sp, angular_accel, dt, _maybe_landed || _landed);
+			Vector3f att_control = _rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
 
 			/*
 			 * DASC LAB CUSTOM BEGIN
@@ -256,74 +253,70 @@ MulticopterRateControl::Run()
 			// hijack px4 and insert our own geometric controller if sufficient flags are met
 
 			// check that we are in offboard mode and want to use the custom geometric controller
-      if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
-		  //if (true){
-      // implement the geometric controller, and update att_control
+			if (_vehicle_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control) {
+				// load other states as well
+				_vehicle_local_position_sub.update(&_vehicle_local_position);
+				_trajectory_setpoint_sub.update(&_trajectory_setpoint);
+				_vehicle_attitude_sub.update(&_vehicle_attitude);
 
+				// if (true) {
+				//   // reinitialize for testing purposes
+				//   _trajectory_setpoint.x = 0.0;
+				//   _trajectory_setpoint.y = 0.0;
+				//   _trajectory_setpoint.z = -1.0;
+				//   _trajectory_setpoint.yaw = 0.0;
+				//   _trajectory_setpoint.yawspeed = 0.0;
+				//   _trajectory_setpoint.vx = 0.0;
+				//   _trajectory_setpoint.vy = 0.0;
+				//   _trajectory_setpoint.vz = 0.0;
+				//   _trajectory_setpoint.acceleration[0] = 0.0;
+				//   _trajectory_setpoint.acceleration[1] = 0.0;
+				//   _trajectory_setpoint.acceleration[2] = 0.0;
+				//   _trajectory_setpoint.jerk[0] = 0.0;
+				//   _trajectory_setpoint.jerk[1] = 0.0;
+				//   _trajectory_setpoint.jerk[2] = 0.0;
+				//   _trajectory_setpoint.thrust[0] = 0.0;
+				//   _trajectory_setpoint.thrust[1] = 0.0;
+				//   _trajectory_setpoint.thrust[2] = 0.0;
+				// }
 
-        // load other states as well
-        _vehicle_local_position_sub.update(&_vehicle_local_position);
-        _trajectory_setpoint_sub.update(&_trajectory_setpoint);
-        _vehicle_attitude_sub.update(&_vehicle_attitude);
+				// PX4_INFO("traj setpoint xyz: %f, %f, %f", double(_trajectory_setpoint.x), double(_trajectory_setpoint.y), double(_trajectory_setpoint.z));
 
-        // if (true) {
-        //   // reinitialize for testing purposes
-        //   _trajectory_setpoint.x = 0.0;
-        //   _trajectory_setpoint.y = 0.0;
-        //   _trajectory_setpoint.z = -1.0;
-        //   _trajectory_setpoint.yaw = 0.0;
-        //   _trajectory_setpoint.yawspeed = 0.0;
-        //   _trajectory_setpoint.vx = 0.0;
-        //   _trajectory_setpoint.vy = 0.0;
-        //   _trajectory_setpoint.vz = 0.0;
-        //   _trajectory_setpoint.acceleration[0] = 0.0;
-        //   _trajectory_setpoint.acceleration[1] = 0.0;
-        //   _trajectory_setpoint.acceleration[2] = 0.0;
-        //   _trajectory_setpoint.jerk[0] = 0.0;
-        //   _trajectory_setpoint.jerk[1] = 0.0;
-        //   _trajectory_setpoint.jerk[2] = 0.0;
-        //   _trajectory_setpoint.thrust[0] = 0.0;
-        //   _trajectory_setpoint.thrust[1] = 0.0;
-        //   _trajectory_setpoint.thrust[2] = 0.0;
-        // }
+				// construct current state
+				matrix::Vector3f _pos(
+					_vehicle_local_position.x,
+					_vehicle_local_position.y,
+					_vehicle_local_position.z);
 
-        // PX4_INFO("traj setpoint xyz: %f, %f, %f", double(_trajectory_setpoint.x), double(_trajectory_setpoint.y), double(_trajectory_setpoint.z));
-
-        // construct current state
-        matrix::Vector3f _pos(
-            _vehicle_local_position.x,
-            _vehicle_local_position.y,
-            _vehicle_local_position.z );
-
-        matrix::Vector3f _vel(
-            _vehicle_local_position.vx,
-            _vehicle_local_position.vy,
-            _vehicle_local_position.vz );
+				matrix::Vector3f _vel(
+					_vehicle_local_position.vx,
+					_vehicle_local_position.vy,
+					_vehicle_local_position.vz);
 
 				matrix::Quatf    _ang_att(_vehicle_attitude.q);
 
-        // run the geometric controller
+				// run the geometric controller
 				const matrix::Vector<float, 4> res = _geometric_control.update(
-            _pos, _vel, _ang_att, rates, _trajectory_setpoint, _v_control_mode);
+						_pos, _vel, _ang_att, rates, _trajectory_setpoint, _vehicle_control_mode);
 
-        // PX4_INFO("completed geometric controller");
+				// PX4_INFO("completed geometric controller");
 
-        // PX4_INFO("SI: thrust, att: %f, %f, %f, %f", double(res(3)), double(res(0)), double(res(1)), double(res(2)));
+				// PX4_INFO("SI: thrust, att: %f, %f, %f, %f", double(res(3)), double(res(0)), double(res(1)), double(res(2)));
 
-        // normalize the values to appropriate ranges
-        _thrust_sp = math::min(1.0f, math::max(0.0f, res(3) / 9.81f * _param_geo_hover_thrust.get()));
+				// normalize the values to appropriate ranges
+				_thrust_setpoint(2) = math::min(1.0f, math::max(0.0f, res(3) / 9.81f * _param_geo_hover_thrust.get()));
 
-        att_control(0) = res(0) / _param_geo_torq_const.get();
-        att_control(1) = res(1) / _param_geo_torq_const.get();
-        att_control(2) = res(2) / _param_geo_torq_const.get();
+				att_control(0) = res(0) / _param_geo_torq_const.get();
+				att_control(1) = res(1) / _param_geo_torq_const.get();
+				att_control(2) = res(2) / _param_geo_torq_const.get();
 
-        if (att_control.norm() > _param_geo_torq_max.get()){
-          att_control = att_control.unit() * _param_geo_torq_max.get();
-        }
+				if (att_control.norm() > _param_geo_torq_max.get()) {
+					att_control = att_control.unit() * _param_geo_torq_max.get();
+				}
 
-        // PX4_INFO("thrust, att: %f, %f, %f, %f", double(_thrust_sp), double(att_control(0)), double(att_control(1)), double(att_control(2)));
+				// PX4_INFO("thrust, att: %f, %f, %f, %f", double(_thrust_sp), double(att_control(0)), double(att_control(1)), double(att_control(2)));
 
-        // PX4_INFO("exiting geometric controller");
+				// PX4_INFO("exiting geometric controller");
 
 
 			}
@@ -345,7 +338,8 @@ MulticopterRateControl::Run()
 			actuators.control[actuator_controls_s::INDEX_ROLL] = PX4_ISFINITE(att_control(0)) ? att_control(0) : 0.0f;
 			actuators.control[actuator_controls_s::INDEX_PITCH] = PX4_ISFINITE(att_control(1)) ? att_control(1) : 0.0f;
 			actuators.control[actuator_controls_s::INDEX_YAW] = PX4_ISFINITE(att_control(2)) ? att_control(2) : 0.0f;
-			actuators.control[actuator_controls_s::INDEX_THROTTLE] = PX4_ISFINITE(_thrust_sp) ? _thrust_sp : 0.0f;
+			actuators.control[actuator_controls_s::INDEX_THROTTLE] = PX4_ISFINITE(_thrust_setpoint(2)) ? -_thrust_setpoint(
+						2) : 0.0f;
 			actuators.control[actuator_controls_s::INDEX_LANDING_GEAR] = _landing_gear;
 			actuators.timestamp_sample = angular_velocity.timestamp_sample;
 
@@ -372,16 +366,16 @@ MulticopterRateControl::Run()
 			}
 
 			actuators.timestamp = hrt_absolute_time();
-			_actuators_0_pub.publish(actuators);
+			_actuator_controls_0_pub.publish(actuators);
 
 			updateActuatorControlsStatus(actuators, dt);
 
-		} else if (_v_control_mode.flag_control_termination_enabled) {
+		} else if (_vehicle_control_mode.flag_control_termination_enabled) {
 			if (!_vehicle_status.is_vtol) {
 				// publish actuator controls
 				actuator_controls_s actuators{};
 				actuators.timestamp = hrt_absolute_time();
-				_actuators_0_pub.publish(actuators);
+				_actuator_controls_0_pub.publish(actuators);
 			}
 		}
 	}
@@ -391,26 +385,24 @@ MulticopterRateControl::Run()
 
 void MulticopterRateControl::publishTorqueSetpoint(const Vector3f &torque_sp, const hrt_abstime &timestamp_sample)
 {
-	vehicle_torque_setpoint_s v_torque_sp = {};
-	v_torque_sp.timestamp = hrt_absolute_time();
-	v_torque_sp.timestamp_sample = timestamp_sample;
-	v_torque_sp.xyz[0] = (PX4_ISFINITE(torque_sp(0))) ? torque_sp(0) : 0.0f;
-	v_torque_sp.xyz[1] = (PX4_ISFINITE(torque_sp(1))) ? torque_sp(1) : 0.0f;
-	v_torque_sp.xyz[2] = (PX4_ISFINITE(torque_sp(2))) ? torque_sp(2) : 0.0f;
+	vehicle_torque_setpoint_s vehicle_torque_setpoint{};
+	vehicle_torque_setpoint.timestamp = hrt_absolute_time();
+	vehicle_torque_setpoint.timestamp_sample = timestamp_sample;
+	vehicle_torque_setpoint.xyz[0] = (PX4_ISFINITE(torque_sp(0))) ? torque_sp(0) : 0.0f;
+	vehicle_torque_setpoint.xyz[1] = (PX4_ISFINITE(torque_sp(1))) ? torque_sp(1) : 0.0f;
+	vehicle_torque_setpoint.xyz[2] = (PX4_ISFINITE(torque_sp(2))) ? torque_sp(2) : 0.0f;
 
-	_vehicle_torque_setpoint_pub.publish(v_torque_sp);
+	_vehicle_torque_setpoint_pub.publish(vehicle_torque_setpoint);
 }
 
 void MulticopterRateControl::publishThrustSetpoint(const hrt_abstime &timestamp_sample)
 {
-	vehicle_thrust_setpoint_s v_thrust_sp = {};
-	v_thrust_sp.timestamp = hrt_absolute_time();
-	v_thrust_sp.timestamp_sample = timestamp_sample;
-	v_thrust_sp.xyz[0] = 0.0f;
-	v_thrust_sp.xyz[1] = 0.0f;
-	v_thrust_sp.xyz[2] = PX4_ISFINITE(_thrust_sp) ? -_thrust_sp : 0.0f; // Z is Down
+	vehicle_thrust_setpoint_s vehicle_thrust_setpoint{};
+	vehicle_thrust_setpoint.timestamp = hrt_absolute_time();
+	vehicle_thrust_setpoint.timestamp_sample = timestamp_sample;
+	_thrust_setpoint.copyTo(vehicle_thrust_setpoint.xyz);
 
-	_vehicle_thrust_setpoint_pub.publish(v_thrust_sp);
+	_vehicle_thrust_setpoint_pub.publish(vehicle_thrust_setpoint);
 }
 
 void MulticopterRateControl::updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt)

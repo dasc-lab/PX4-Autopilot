@@ -253,6 +253,7 @@ private:
 
 	void write_info(LogType type, const char *name, const char *value);
 	void write_info_multiple(LogType type, const char *name, const char *value, bool is_continued);
+	void write_info_multiple(LogType type, const char *name, int fd);
 	void write_info(LogType type, const char *name, int32_t value);
 	void write_info(LogType type, const char *name, uint32_t value);
 
@@ -264,6 +265,7 @@ private:
 	void write_parameter_defaults(LogType type);
 
 	void write_changed_parameters(LogType type);
+	void write_events_file(LogType type);
 
 	inline bool copy_if_updated(int sub_idx, void *buffer, bool try_to_subscribe);
 
@@ -353,7 +355,7 @@ private:
 	float						_rate_factor{1.0f};
 	const orb_metadata				*_polling_topic_meta{nullptr}; ///< if non-null, poll on this topic instead of sleeping
 	orb_advert_t					_mavlink_log_pub{nullptr};
-	uint8_t						_next_topic_id{0}; ///< id of next subscribed ulog topic
+	uint8_t						_next_topic_id{0}; ///< Logger's internal id (first topic is 0, then 1, and so on) it will assign to the next subscribed ulog topic, used for ulog_message_add_logged_s
 	char						*_replay_file_name{nullptr};
 	bool						_should_stop_file_log{false}; /**< if true _next_load_print is set and file logging
 											will be stopped after load printing (for the full log) */

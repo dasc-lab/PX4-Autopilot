@@ -51,10 +51,13 @@
 #include <uORB/topics/wind.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_global_position.h>
-#include <uORB/topics/vehicle_gps_position.h>
+#include <uORB/topics/sensor_gps.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_status_flags.h>
+#include <uORB/topics/health_report.h>
+
+#include <px4_platform_common/events.h>
 
 class MavlinkStreamHighLatency2 : public MavlinkStream
 {
@@ -402,42 +405,35 @@ private:
 		vehicle_status_s status;
 
 		if (_status_sub.update(&status)) {
-			if ((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_ABSOLUTE_PRESSURE)
-			    && !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_ABSOLUTE_PRESSURE)) {
-				msg->failure_flags |= HL_FAILURE_FLAG_ABSOLUTE_PRESSURE;
-			}
+			health_report_s health_report;
 
-			if (((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_3D_ACCEL)
-			     && !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_3D_ACCEL)) ||
-			    ((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_3D_ACCEL2) &&
-			     !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_3D_ACCEL2))) {
-				msg->failure_flags |= HL_FAILURE_FLAG_3D_ACCEL;
-			}
+			if (_health_report_sub.copy(&health_report)) {
+				if ((health_report.arming_check_error_flags | health_report.health_error_flags) & (uint64_t)
+				    events::px4::enums::health_component_t::absolute_pressure) {
+					msg->failure_flags |= HL_FAILURE_FLAG_ABSOLUTE_PRESSURE;
+				}
 
-			if (((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_3D_GYRO)
-			     && !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_3D_GYRO)) ||
-			    ((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_3D_GYRO2) &&
-			     !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_3D_GYRO2))) {
-				msg->failure_flags |= HL_FAILURE_FLAG_3D_GYRO;
-			}
+				if ((health_report.arming_check_error_flags | health_report.health_error_flags) & (uint64_t)
+				    events::px4::enums::health_component_t::accel) {
+					msg->failure_flags |= HL_FAILURE_FLAG_3D_ACCEL;
+				}
 
-			if (((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_3D_MAG)
-			     && !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_3D_MAG)) ||
-			    ((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_SENSOR_3D_MAG2) &&
-			     !(status.onboard_control_sensors_health & MAV_SYS_STATUS_SENSOR_3D_MAG2))) {
-				msg->failure_flags |= HL_FAILURE_FLAG_3D_MAG;
-			}
+				if ((health_report.arming_check_error_flags | health_report.health_error_flags) & (uint64_t)
+				    events::px4::enums::health_component_t::gyro) {
+					msg->failure_flags |= HL_FAILURE_FLAG_3D_GYRO;
+				}
 
-			if ((status.onboard_control_sensors_enabled & MAV_SYS_STATUS_TERRAIN)
-			    && !(status.onboard_control_sensors_health & MAV_SYS_STATUS_TERRAIN)) {
-				msg->failure_flags |= HL_FAILURE_FLAG_TERRAIN;
+				if ((health_report.arming_check_error_flags | health_report.health_error_flags) & (uint64_t)
+				    events::px4::enums::health_component_t::magnetometer) {
+					msg->failure_flags |= HL_FAILURE_FLAG_3D_MAG;
+				}
 			}
 
 			if (status.rc_signal_lost) {
 				msg->failure_flags |= HL_FAILURE_FLAG_RC_RECEIVER;
 			}
 
-			if (status.engine_failure) {
+			if (status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) {
 				msg->failure_flags |= HL_FAILURE_FLAG_ENGINE;
 			}
 
@@ -550,7 +546,7 @@ private:
 
 	void update_gps()
 	{
-		vehicle_gps_position_s gps;
+		sensor_gps_s gps;
 
 		if (_gps_sub.update(&gps)) {
 			_eph.add_value(gps.eph, _update_rate_filtered);
@@ -640,6 +636,7 @@ private:
 	uORB::Subscription _status_flags_sub{ORB_ID(vehicle_status_flags)};
 	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
 	uORB::Subscription _wind_sub{ORB_ID(wind)};
+	uORB::Subscription _health_report_sub{ORB_ID(health_report)};
 
 	SimpleAnalyzer _airspeed;
 	SimpleAnalyzer _airspeed_sp;

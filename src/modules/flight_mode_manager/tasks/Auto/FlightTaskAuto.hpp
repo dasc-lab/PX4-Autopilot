@@ -46,6 +46,7 @@
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <lib/geo/geo.h>
+#include <lib/weather_vane/WeatherVane.hpp>
 #include <lib/mathlib/math/filter/AlphaFilter.hpp>
 #include <lib/motion_planning/PositionSmoothing.hpp>
 #include "Sticks.hpp"
@@ -70,8 +71,7 @@ enum class WaypointType : int {
 	loiter = position_setpoint_s::SETPOINT_TYPE_LOITER,
 	takeoff = position_setpoint_s::SETPOINT_TYPE_TAKEOFF,
 	land = position_setpoint_s::SETPOINT_TYPE_LAND,
-	idle = position_setpoint_s::SETPOINT_TYPE_IDLE,
-	follow_target = position_setpoint_s::SETPOINT_TYPE_FOLLOW_TARGET,
+	idle = position_setpoint_s::SETPOINT_TYPE_IDLE
 };
 
 enum class State {
@@ -84,18 +84,13 @@ enum class State {
 class FlightTaskAuto : public FlightTask
 {
 public:
-	FlightTaskAuto();
-
+	FlightTaskAuto() = default;
 	virtual ~FlightTaskAuto() = default;
-	bool activate(const vehicle_local_position_setpoint_s &last_setpoint) override;
+	bool activate(const trajectory_setpoint_s &last_setpoint) override;
 	void reActivate() override;
 	bool updateInitialize() override;
 	bool update() override;
 
-	/**
-	 * Sets an external yaw handler which can be used to implement a different yaw control strategy.
-	 */
-	void setYawHandler(WeatherVane *ext_yaw_handler) override {_ext_yaw_handler = ext_yaw_handler;}
 	void overrideCruiseSpeed(const float cruise_speed_m_s) override;
 
 protected:
@@ -137,18 +132,17 @@ protected:
 
 	State _current_state{State::none};
 	float _target_acceptance_radius{0.0f}; /**< Acceptances radius of the target */
-	int _mission_gear{landing_gear_s::GEAR_KEEP};
 
 	float _yaw_sp_prev{NAN};
 	AlphaFilter<float> _yawspeed_filter;
 	bool _yaw_sp_aligned{false};
 
-	ObstacleAvoidance _obstacle_avoidance; /**< class adjusting setpoints according to external avoidance module's input */
+	ObstacleAvoidance _obstacle_avoidance{this}; /**< class adjusting setpoints according to external avoidance module's input */
 
 	PositionSmoothing _position_smoothing;
 	Vector3f _unsmoothed_velocity_setpoint;
-	Sticks _sticks;
-	StickAccelerationXY _stick_acceleration_xy;
+	Sticks _sticks{this};
+	StickAccelerationXY _stick_acceleration_xy{this};
 	StickYaw _stick_yaw;
 	matrix::Vector3f _land_position;
 	float _land_heading;
@@ -164,7 +158,6 @@ protected:
 					(ParamInt<px4::params::COM_OBS_AVOID>) _param_com_obs_avoid, // obstacle avoidance active
 					(ParamFloat<px4::params::MPC_YAWRAUTO_MAX>) _param_mpc_yawrauto_max,
 					(ParamFloat<px4::params::MIS_YAW_ERR>) _param_mis_yaw_err, // yaw-error threshold
-					(ParamBool<px4::params::WV_EN>) _param_wv_en, // enable/disable weather vane (VTOL)
 					(ParamFloat<px4::params::MPC_ACC_HOR>) _param_mpc_acc_hor, // acceleration in flight
 					(ParamFloat<px4::params::MPC_ACC_UP_MAX>) _param_mpc_acc_up_max,
 					(ParamFloat<px4::params::MPC_ACC_DOWN_MAX>) _param_mpc_acc_down_max,
@@ -202,14 +195,13 @@ private:
 	_triplet_next_wp; /**< next triplet from navigator which may differ from the intenal one (_next_wp) depending on the vehicle state.*/
 	matrix::Vector3f _closest_pt; /**< closest point to the vehicle position on the line previous - target */
 
-	hrt_abstime _time_last_cruise_speed_override{0}; ///< timestamp the cruise speed was last time overriden using DO_CHANGE_SPEED
+	hrt_abstime _time_last_cruise_speed_override{0}; ///< timestamp the cruise speed was last time overridden using DO_CHANGE_SPEED
 
 	MapProjection _reference_position{}; /**< Class used to project lat/lon setpoint into local frame. */
 	float _reference_altitude{NAN}; /**< Altitude relative to ground. */
 	hrt_abstime _time_stamp_reference{0}; /**< time stamp when last reference update occured. */
 
-	WeatherVane *_ext_yaw_handler{nullptr};	/**< external weathervane library, used to implement a yaw control law that turns the vehicle nose into the wind */
-
+	WeatherVane _weathervane{this}; /**< weathervane library, used to implement a yaw control law that turns the vehicle nose into the wind */
 
 	void _limitYawRate(); /**< Limits the rate of change of the yaw setpoint. */
 	bool _evaluateTriplets(); /**< Checks and sets triplets. */

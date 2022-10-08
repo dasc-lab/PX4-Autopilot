@@ -31,7 +31,6 @@
 #
 ############################################################################
 
-add_subdirectory(RateControl)
 add_subdirectory(GeometricControl)
 
 px4_add_module(

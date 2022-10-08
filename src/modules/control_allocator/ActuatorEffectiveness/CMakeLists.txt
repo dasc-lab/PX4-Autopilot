@@ -40,6 +40,8 @@ px4_add_library(ActuatorEffectiveness
 	ActuatorEffectivenessCustom.hpp
 	ActuatorEffectivenessFixedWing.cpp
 	ActuatorEffectivenessFixedWing.hpp
+	ActuatorEffectivenessHelicopter.cpp
+	ActuatorEffectivenessHelicopter.hpp
 	ActuatorEffectivenessMCTilt.cpp
 	ActuatorEffectivenessMCTilt.hpp
 	ActuatorEffectivenessMultirotor.cpp
@@ -67,4 +69,5 @@ target_link_libraries(ActuatorEffectiveness
 		mathlib
 )
 
+px4_add_functional_gtest(SRC ActuatorEffectivenessHelicopterTest.cpp LINKLIBS ActuatorEffectiveness)
 px4_add_functional_gtest(SRC ActuatorEffectivenessRotorsTest.cpp LINKLIBS ActuatorEffectiveness)

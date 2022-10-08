@@ -33,8 +33,7 @@
 
 #pragma once
 
-#include <RateControl.hpp>
-
+#include <lib/rate_control/rate_control.hpp>
 #include <lib/matrix/matrix/math.hpp>
 #include <lib/perf/perf_counter.h>
 #include <px4_platform_common/defines.h>
@@ -66,6 +65,7 @@
 
 // DASC-CUSTOM
 #include <GeometricControl.hpp>
+#include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -98,7 +98,7 @@ private:
 	/**
 	 * initialize some vectors/matrices from parameters
 	 */
-	void		parameters_updated();
+	void parameters_updated();
 
 	void updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt);
 
@@ -109,64 +109,60 @@ private:
 	GeometricControl _geometric_control; ///< class for geometric control calculations
 
 	uORB::Subscription _battery_status_sub{ORB_ID(battery_status)};
+	uORB::Subscription _control_allocator_status_sub{ORB_ID(control_allocator_status)};
 	uORB::Subscription _landing_gear_sub{ORB_ID(landing_gear)};
 	uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
-	uORB::Subscription _control_allocator_status_sub{ORB_ID(control_allocator_status)};
-	uORB::Subscription _v_control_mode_sub{ORB_ID(vehicle_control_mode)};
-	uORB::Subscription _v_rates_sp_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_angular_acceleration_sub{ORB_ID(vehicle_angular_acceleration)};
+	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
+	uORB::Subscription _vehicle_rates_setpoint_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 
-  // DASC CUSTOM
+	// DASC CUSTOM
 	uORB::Subscription _external_controller_sub{ORB_ID(external_controller)};
-  uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
-  uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
-  uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
-
+	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
+	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
+	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::SubscriptionCallbackWorkItem _vehicle_angular_velocity_sub{this, ORB_ID(vehicle_angular_velocity)};
 
-	uORB::Publication<actuator_controls_s>		_actuators_0_pub;
+	uORB::Publication<actuator_controls_s>		_actuator_controls_0_pub;
 	uORB::Publication<actuator_controls_status_s>	_actuator_controls_status_0_pub{ORB_ID(actuator_controls_status_0)};
 	uORB::PublicationMulti<rate_ctrl_status_s>	_controller_status_pub{ORB_ID(rate_ctrl_status)};
-	uORB::Publication<vehicle_rates_setpoint_s>	_v_rates_sp_pub{ORB_ID(vehicle_rates_setpoint)};
+	uORB::Publication<vehicle_rates_setpoint_s>	_vehicle_rates_setpoint_pub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Publication<vehicle_thrust_setpoint_s>	_vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};
 	uORB::Publication<vehicle_torque_setpoint_s>	_vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};
 
 	orb_advert_t _mavlink_log_pub{nullptr};
 
-	vehicle_control_mode_s		_v_control_mode{};
-	vehicle_status_s		_vehicle_status{};
+	vehicle_control_mode_s	_vehicle_control_mode{};
+	vehicle_status_s	_vehicle_status{};
 
-  // DASC CUSOM 
-  external_controller_s                 _external_controller{};
+	// DASC CUSTOM
+	external_controller_s                 _external_controller{};
 	vehicle_attitude_s                    _vehicle_attitude{};
-  vehicle_local_position_s              _vehicle_local_position{};
-  vehicle_local_position_setpoint_s     _trajectory_setpoint{};
-
-
-  
-  bool _actuators_0_circuit_breaker_enabled{false};	/**< circuit breaker to suppress output */
+	vehicle_local_position_s              _vehicle_local_position{};
+	vehicle_local_position_setpoint_s     _trajectory_setpoint{};
 	bool _landed{true};
 	bool _maybe_landed{true};
 
-	float _battery_status_scale{0.0f};
+	hrt_abstime _last_run{0};
 
 	perf_counter_t	_loop_perf;			/**< loop duration performance counter */
 
-	matrix::Vector3f _rates_sp;			/**< angular rates setpoint */
+	// keep setpoint values between updates
+	matrix::Vector3f _acro_rate_max;		/**< max attitude rates in acro mode */
+	matrix::Vector3f _rates_setpoint{};
 
-	float		_thrust_sp{0.0f};		/**< thrust setpoint */
-
-	hrt_abstime _last_run{0};
-
-	int8_t _landing_gear{landing_gear_s::GEAR_DOWN};
+	float _battery_status_scale{0.0f};
+	matrix::Vector3f _thrust_setpoint{};
 
 	float _energy_integration_time{0.0f};
 	float _control_energy[4] {};
+
+	int8_t _landing_gear{landing_gear_s::GEAR_DOWN};
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _param_mc_rollrate_p,
@@ -195,32 +191,27 @@ private:
 		(ParamFloat<px4::params::MC_ACRO_R_MAX>) _param_mc_acro_r_max,
 		(ParamFloat<px4::params::MC_ACRO_P_MAX>) _param_mc_acro_p_max,
 		(ParamFloat<px4::params::MC_ACRO_Y_MAX>) _param_mc_acro_y_max,
-		(ParamFloat<px4::params::MC_ACRO_EXPO>) _param_mc_acro_expo,				/**< expo stick curve shape (roll & pitch) */
+		(ParamFloat<px4::params::MC_ACRO_EXPO>) _param_mc_acro_expo,			/**< expo stick curve shape (roll & pitch) */
 		(ParamFloat<px4::params::MC_ACRO_EXPO_Y>) _param_mc_acro_expo_y,				/**< expo stick curve shape (yaw) */
-		(ParamFloat<px4::params::MC_ACRO_SUPEXPO>) _param_mc_acro_supexpo,			/**< superexpo stick curve shape (roll & pitch) */
-		(ParamFloat<px4::params::MC_ACRO_SUPEXPOY>) _param_mc_acro_supexpoy,			/**< superexpo stick curve shape (yaw) */
+		(ParamFloat<px4::params::MC_ACRO_SUPEXPO>) _param_mc_acro_supexpo,		/**< superexpo stick curve shape (roll & pitch) */
+		(ParamFloat<px4::params::MC_ACRO_SUPEXPOY>) _param_mc_acro_supexpoy,		/**< superexpo stick curve shape (yaw) */
 
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
 
-		(ParamInt<px4::params::CBRK_RATE_CTRL>) _param_cbrk_rate_ctrl,
-	
-    // DASC CUSTOM PARAMS
-    (ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
-    (ParamFloat<px4::params::GEO_KV>) _param_geo_kv,
-    (ParamFloat<px4::params::GEO_KR>) _param_geo_kR,
-    (ParamFloat<px4::params::GEO_KOMEGA>) _param_geo_kOmega,
-    (ParamFloat<px4::params::GEO_JXX>) _param_geo_Jxx,
-    (ParamFloat<px4::params::GEO_JYY>) _param_geo_Jyy,
-    (ParamFloat<px4::params::GEO_JZZ>) _param_geo_Jzz,
-    (ParamFloat<px4::params::GEO_JXY>) _param_geo_Jxy,
-    (ParamFloat<px4::params::GEO_JXZ>) _param_geo_Jxz,
-    (ParamFloat<px4::params::GEO_JYZ>) _param_geo_Jyz,
-    (ParamFloat<px4::params::GEO_TORQ_MAX>) _param_geo_torq_max,
-    (ParamFloat<px4::params::GEO_TORQ_CONST>) _param_geo_torq_const,
-    (ParamFloat<px4::params::GEO_HOVER_THR>) _param_geo_hover_thrust
-  )
-  
-
-	matrix::Vector3f _acro_rate_max;	/**< max attitude rates in acro mode */
+		// DASC CUSTOM PARAMS
+		(ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
+		(ParamFloat<px4::params::GEO_KV>) _param_geo_kv,
+		(ParamFloat<px4::params::GEO_KR>) _param_geo_kR,
+		(ParamFloat<px4::params::GEO_KOMEGA>) _param_geo_kOmega,
+		(ParamFloat<px4::params::GEO_JXX>) _param_geo_Jxx,
+		(ParamFloat<px4::params::GEO_JYY>) _param_geo_Jyy,
+		(ParamFloat<px4::params::GEO_JZZ>) _param_geo_Jzz,
+		(ParamFloat<px4::params::GEO_JXY>) _param_geo_Jxy,
+		(ParamFloat<px4::params::GEO_JXZ>) _param_geo_Jxz,
+		(ParamFloat<px4::params::GEO_JYZ>) _param_geo_Jyz,
+		(ParamFloat<px4::params::GEO_TORQ_MAX>) _param_geo_torq_max,
+		(ParamFloat<px4::params::GEO_TORQ_CONST>) _param_geo_torq_const,
+		(ParamFloat<px4::params::GEO_HOVER_THR>) _param_geo_hover_thrust
+	)
 
 };
