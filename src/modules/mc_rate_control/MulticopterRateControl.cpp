@@ -251,7 +251,7 @@ MulticopterRateControl::Run()
 			// hijack px4 and insert our own geometric controller if sufficient flags are met
 
 			// check that we are in offboard mode and want to use the custom geometric controller
-      if (_v_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
+      if (_vehicle_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control){
         // load other states as well
         _vehicle_local_position_sub.update(&_vehicle_local_position);
         _trajectory_setpoint_sub.update(&_trajectory_setpoint);
@@ -295,14 +295,14 @@ MulticopterRateControl::Run()
 
         // run the geometric controller
 				const matrix::Vector<float, 4> res = _geometric_control.update(
-            _pos, _vel, _ang_att, rates, _trajectory_setpoint, _v_control_mode);
+            _pos, _vel, _ang_att, rates, _trajectory_setpoint, _vehicle_control_mode);
 
         // PX4_INFO("completed geometric controller");
 
         // PX4_INFO("SI: thrust, att: %f, %f, %f, %f", double(res(3)), double(res(0)), double(res(1)), double(res(2)));
 
         // normalize the values to appropriate ranges
-        _thrust_sp = math::min(1.0f, math::max(0.0f, res(3) / 9.81f * _param_geo_hover_thrust.get()));
+        _thrust_setpoint(2) = math::min(1.0f, math::max(0.0f, res(3) / 9.81f * _param_geo_hover_thrust.get()));
 
         att_control(0) = res(0) / _param_geo_torq_const.get();
         att_control(1) = res(1) / _param_geo_torq_const.get();

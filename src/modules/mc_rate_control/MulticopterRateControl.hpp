@@ -65,6 +65,7 @@
 
 // DASC-CUSTOM
 #include <GeometricControl.hpp>
+#include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
@@ -196,8 +197,6 @@ private:
 		(ParamFloat<px4::params::MC_ACRO_SUPEXPOY>) _param_mc_acro_supexpoy,		/**< superexpo stick curve shape (yaw) */
 
 		(ParamBool<px4::params::MC_BAT_SCALE_EN>) _param_mc_bat_scale_en,
-
-    (ParamInt<px4::params::CBRK_RATE_CTRL>) _param_cbrk_rate_ctrl,
 
     // DASC CUSTOM PARAMS
     (ParamFloat<px4::params::GEO_KX>) _param_geo_kx,
