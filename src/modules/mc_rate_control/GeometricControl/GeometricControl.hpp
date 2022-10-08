@@ -78,7 +78,6 @@ private:
 	const matrix::Vector3f _z = matrix::Vector3f(0,0,1);
 
 	static constexpr float g = 9.81f;
-	float hover_throttle = 0.5f;
 	matrix::SquareMatrix<float, 3> _J;
 
 	// gains

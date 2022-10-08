@@ -91,6 +91,7 @@ private:
 			  const float heading_accuracy);
 
 	void handleInjectDataTopic();
+  bool injectData(const uint8_t *const data, const size_t data_len);
 	bool PublishRTCMStream(const uint8_t *data, size_t data_len);
 	bool PublishMovingBaselineData(const uint8_t *data, size_t data_len);
 
