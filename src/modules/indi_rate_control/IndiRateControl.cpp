@@ -1,37 +1,4 @@
-/****************************************************************************
- *
- *   Copyright (c) 2013-2019 PX4 Development Team. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- * 3. Neither the name PX4 nor the names of its contributors may be
- *    used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
- * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
- * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
- ****************************************************************************/
-
-#include "MulticopterRateControl.hpp"
+#include "IndiRateControl.hpp"
 
 #include <drivers/drv_hrt.h>
 #include <circuit_breaker/circuit_breaker.h>
@@ -43,7 +10,7 @@ using namespace matrix;
 using namespace time_literals;
 using math::radians;
 
-MulticopterRateControl::MulticopterRateControl(bool vtol) :
+IndiRateControl::IndiRateControl(bool vtol) :
 	ModuleParams(nullptr),
 	WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
 	_actuator_controls_0_pub(vtol ? ORB_ID(actuator_controls_virtual_mc) : ORB_ID(actuator_controls_0)),
@@ -55,13 +22,13 @@ MulticopterRateControl::MulticopterRateControl(bool vtol) :
 	_controller_status_pub.advertise();
 }
 
-MulticopterRateControl::~MulticopterRateControl()
+IndiRateControl::~IndiRateControl()
 {
 	perf_free(_loop_perf);
 }
 
 bool
-MulticopterRateControl::init()
+IndiRateControl::init()
 {
 	if (!_vehicle_angular_velocity_sub.registerCallback()) {
 		PX4_ERR("callback registration failed");
@@ -72,7 +39,7 @@ MulticopterRateControl::init()
 }
 
 void
-MulticopterRateControl::parameters_updated()
+IndiRateControl::parameters_updated()
 {
 	// rate control parameters
 	// The controller gain K is used to convert the parallel (P + I/s + sD) form
@@ -94,15 +61,11 @@ MulticopterRateControl::parameters_updated()
 	// manual rate control acro mode rate limits
 	_acro_rate_max = Vector3f(radians(_param_mc_acro_r_max.get()), radians(_param_mc_acro_p_max.get()),
 				  radians(_param_mc_acro_y_max.get()));
-	// DASC CUSTOM
-	_geometric_control.set_gains(_param_geo_kx.get(), _param_geo_kv.get(), _param_geo_kR.get(), _param_geo_kOmega.get());
-	_geometric_control.set_inertia(_param_geo_Jxx.get(), _param_geo_Jyy.get(), _param_geo_Jzz.get(), _param_geo_Jxy.get(),
-				       _param_geo_Jxz.get(), _param_geo_Jyz.get());
 
 }
 
 void
-MulticopterRateControl::Run()
+IndiRateControl::Run()
 {
 	if (should_exit()) {
 		_vehicle_angular_velocity_sub.unregisterCallback();
@@ -126,6 +89,12 @@ MulticopterRateControl::Run()
 	vehicle_angular_velocity_s angular_velocity;
 
 	if (_vehicle_angular_velocity_sub.update(&angular_velocity)) {
+
+		Vector3f _att_control(0, 0, 0);
+		_thrust_setpoint(2) = -1.0;
+		publishTorqueSetpoint(_att_control, angular_velocity.timestamp_sample);
+		publishThrustSetpoint(angular_velocity.timestamp_sample);
+		return;
 
 		// grab corresponding vehicle_angular_acceleration immediately after vehicle_angular_velocity copy
 		vehicle_angular_acceleration_s v_angular_acceleration{};
@@ -174,9 +143,6 @@ MulticopterRateControl::Run()
 
 		// use rates setpoint topic
 		vehicle_rates_setpoint_s vehicle_rates_setpoint{};
-
-		// DASC CUSTOM: check if the external control mode has been changed
-		_external_controller_sub.update(&_external_controller);
 
 		if (_vehicle_control_mode.flag_control_manual_enabled && !_vehicle_control_mode.flag_control_attitude_enabled) {
 			// generate the rate setpoint from sticks
@@ -246,86 +212,6 @@ MulticopterRateControl::Run()
 			// run rate controller
 			Vector3f att_control = _rate_control.update(rates, _rates_setpoint, angular_accel, dt, _maybe_landed || _landed);
 
-			/*
-			 * DASC LAB CUSTOM BEGIN
-			 */
-
-			// hijack px4 and insert our own geometric controller if sufficient flags are met
-
-			// check that we are in offboard mode and want to use the custom geometric controller
-			if (_vehicle_control_mode.flag_control_offboard_enabled && _external_controller.use_geometric_control) {
-				// load other states as well
-				_vehicle_local_position_sub.update(&_vehicle_local_position);
-				_trajectory_setpoint_sub.update(&_trajectory_setpoint);
-				_vehicle_attitude_sub.update(&_vehicle_attitude);
-
-				// if (true) {
-				//   // reinitialize for testing purposes
-				//   _trajectory_setpoint.x = 0.0;
-				//   _trajectory_setpoint.y = 0.0;
-				//   _trajectory_setpoint.z = -1.0;
-				//   _trajectory_setpoint.yaw = 0.0;
-				//   _trajectory_setpoint.yawspeed = 0.0;
-				//   _trajectory_setpoint.vx = 0.0;
-				//   _trajectory_setpoint.vy = 0.0;
-				//   _trajectory_setpoint.vz = 0.0;
-				//   _trajectory_setpoint.acceleration[0] = 0.0;
-				//   _trajectory_setpoint.acceleration[1] = 0.0;
-				//   _trajectory_setpoint.acceleration[2] = 0.0;
-				//   _trajectory_setpoint.jerk[0] = 0.0;
-				//   _trajectory_setpoint.jerk[1] = 0.0;
-				//   _trajectory_setpoint.jerk[2] = 0.0;
-				//   _trajectory_setpoint.thrust[0] = 0.0;
-				//   _trajectory_setpoint.thrust[1] = 0.0;
-				//   _trajectory_setpoint.thrust[2] = 0.0;
-				// }
-
-				// PX4_INFO("traj setpoint xyz: %f, %f, %f", double(_trajectory_setpoint.x), double(_trajectory_setpoint.y), double(_trajectory_setpoint.z));
-
-				// construct current state
-				matrix::Vector3f _pos(
-					_vehicle_local_position.x,
-					_vehicle_local_position.y,
-					_vehicle_local_position.z);
-
-				matrix::Vector3f _vel(
-					_vehicle_local_position.vx,
-					_vehicle_local_position.vy,
-					_vehicle_local_position.vz);
-
-				matrix::Quatf    _ang_att(_vehicle_attitude.q);
-
-				// run the geometric controller
-				const matrix::Vector<float, 4> res = _geometric_control.update(
-						_pos, _vel, _ang_att, rates, _trajectory_setpoint, _vehicle_control_mode);
-
-				// PX4_INFO("completed geometric controller");
-
-				// PX4_INFO("SI: thrust, att: %f, %f, %f, %f", double(res(3)), double(res(0)), double(res(1)), double(res(2)));
-
-				// normalize the values to appropriate ranges
-				_thrust_setpoint(2) = math::min(1.0f, math::max(0.0f, res(3) / 9.81f * _param_geo_hover_thrust.get()));
-
-				att_control(0) = res(0) / _param_geo_torq_const.get();
-				att_control(1) = res(1) / _param_geo_torq_const.get();
-				att_control(2) = res(2) / _param_geo_torq_const.get();
-
-				if (att_control.norm() > _param_geo_torq_max.get()) {
-					att_control = att_control.unit() * _param_geo_torq_max.get();
-				}
-
-				// PX4_INFO("thrust, att: %f, %f, %f, %f", double(_thrust_sp), double(att_control(0)), double(att_control(1)), double(att_control(2)));
-
-				// PX4_INFO("exiting geometric controller");
-
-
-			}
-
-			/*
-			 *  DASC LAB CUSTOM END
-			 */
-
-
 			// publish rate controller status
 			rate_ctrl_status_s rate_ctrl_status{};
 			_rate_control.getRateControlStatus(rate_ctrl_status);
@@ -383,7 +269,7 @@ MulticopterRateControl::Run()
 	perf_end(_loop_perf);
 }
 
-void MulticopterRateControl::publishTorqueSetpoint(const Vector3f &torque_sp, const hrt_abstime &timestamp_sample)
+void IndiRateControl::publishTorqueSetpoint(const Vector3f &torque_sp, const hrt_abstime &timestamp_sample)
 {
 	vehicle_torque_setpoint_s vehicle_torque_setpoint{};
 	vehicle_torque_setpoint.timestamp = hrt_absolute_time();
@@ -395,7 +281,7 @@ void MulticopterRateControl::publishTorqueSetpoint(const Vector3f &torque_sp, co
 	_vehicle_torque_setpoint_pub.publish(vehicle_torque_setpoint);
 }
 
-void MulticopterRateControl::publishThrustSetpoint(const hrt_abstime &timestamp_sample)
+void IndiRateControl::publishThrustSetpoint(const hrt_abstime &timestamp_sample)
 {
 	vehicle_thrust_setpoint_s vehicle_thrust_setpoint{};
 	vehicle_thrust_setpoint.timestamp = hrt_absolute_time();
@@ -405,7 +291,7 @@ void MulticopterRateControl::publishThrustSetpoint(const hrt_abstime &timestamp_
 	_vehicle_thrust_setpoint_pub.publish(vehicle_thrust_setpoint);
 }
 
-void MulticopterRateControl::updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt)
+void IndiRateControl::updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt)
 {
 	for (int i = 0; i < 4; i++) {
 		_control_energy[i] += actuators.control[i] * actuators.control[i] * dt;
@@ -428,7 +314,7 @@ void MulticopterRateControl::updateActuatorControlsStatus(const actuator_control
 	}
 }
 
-int MulticopterRateControl::task_spawn(int argc, char *argv[])
+int IndiRateControl::task_spawn(int argc, char *argv[])
 {
 	bool vtol = false;
 
@@ -438,7 +324,7 @@ int MulticopterRateControl::task_spawn(int argc, char *argv[])
 		}
 	}
 
-	MulticopterRateControl *instance = new MulticopterRateControl(vtol);
+	IndiRateControl *instance = new IndiRateControl(vtol);
 
 	if (instance) {
 		_object.store(instance);
@@ -459,12 +345,12 @@ int MulticopterRateControl::task_spawn(int argc, char *argv[])
 	return PX4_ERROR;
 }
 
-int MulticopterRateControl::custom_command(int argc, char *argv[])
+int IndiRateControl::custom_command(int argc, char *argv[])
 {
 	return print_usage("unknown command");
 }
 
-int MulticopterRateControl::print_usage(const char *reason)
+int IndiRateControl::print_usage(const char *reason)
 {
 	if (reason) {
 		PX4_WARN("%s\n", reason);
@@ -488,7 +374,7 @@ The controller has a PID loop for angular rate error.
 	return 0;
 }
 
-extern "C" __EXPORT int mc_rate_control_main(int argc, char *argv[])
+extern "C" __EXPORT int indi_rate_control_main(int argc, char *argv[])
 {
-	return MulticopterRateControl::main(argc, argv);
+	return IndiRateControl::main(argc, argv);
 }

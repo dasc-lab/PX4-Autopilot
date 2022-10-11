@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2019 PX4 Development Team. All rights reserved.
+ *   Copyright (C) 2019 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,66 +31,14 @@
  *
  ****************************************************************************/
 
-/**
- * @file GeometricControl.hpp
- *
- */
+#include <gtest/gtest.h>
+#include <RateControl.hpp>
 
-#pragma once
+using namespace matrix;
 
-#include <lib/mathlib/mathlib.h>
-#include <matrix/matrix/math.hpp>
-#include <uORB/topics/vehicle_local_position_setpoint.h>
-#include <uORB/topics/vehicle_control_mode.h>
-
-
-//#include <lib/mixer/MultirotorMixer/MultirotorMixer.hpp>
-//#include <uORB/topics/rate_ctrl_status.h>
-
-class GeometricControl
+TEST(RateControlTest, AllZeroCase)
 {
-public:
-	GeometricControl()
-	{
-		_J.setIdentity();
-	}
-	~GeometricControl() = default;
-
-	// functions to set internal parameters
-	void set_gains(float kx, float kv, float kR, float komega);
-	void set_inertia(float Jxx, float Jyy, float Jzz, float Jxy = 0.0f, float Jxz = 0.0f, float Jyz = 0.0f);
-
-	/**
-	 * Run one control loop cycle calculation
-	* pass in SI units, returns in SI units
-	* Returns [moments, _thrust_sp]
-	 */
-	matrix::Vector<float, 4> update(
-		const matrix::Vector3f &pos, // pass in current state
-		const matrix::Vector3f &vel,
-		const matrix::Quatf    &ang_att,
-		const matrix::Vector3f &ang_rate,
-		const vehicle_local_position_setpoint_s &setpoint, // pass in setpoint
-		const vehicle_control_mode_s &control_mode // determines which mode we should control it in
-	);
-
-private:
-
-	const matrix::Vector3f _z = matrix::Vector3f(0, 0, 1);
-
-	static constexpr float g = 9.81f;
-	matrix::SquareMatrix<float, 3> _J;
-
-	// gains
-	float _kx = 1.0;
-	float _kv = 1.0;
-	float _kR = 1.0;
-	float _kOmega = 1.0;
-
-
-
-	matrix::SquareMatrix<float, 3> vector_to_skew(matrix::Vector3f v);
-	matrix::Vector3f skew_to_vector(matrix::SquareMatrix<float, 3> M);
-
-
-};
+	RateControl rate_control;
+	Vector3f torque = rate_control.update(Vector3f(), Vector3f(), Vector3f(), 0.f, false);
+	EXPECT_EQ(torque, Vector3f());
+}

@@ -518,47 +518,48 @@ bool UavcanGnssBridge::PublishRTCMStream(const uint8_t *const data, const size_t
 		perf_count(_rtcm_stream_pub_perf);
 		msg.data.clear();
 	}
-	
-  return result;
+
+	return result;
 }
 
 bool UavcanGnssBridge::injectData(const uint8_t *const data, const size_t data_len)
 {
 	using uavcan::equipment::gnss::RTCMStream;
 
-  perf_count(_rtcm_perf);
+	perf_count(_rtcm_perf);
 
 	RTCMStream msg;
 	msg.protocol_id = RTCMStream::PROTOCOL_ID_RTCM3;
 
-  const size_t capacity = msg.data.capacity();
-  size_t written = 0;
-  bool result = true;
-  while (result && written < data_len) {
-    size_t chunk_size = data_len - written;
+	const size_t capacity = msg.data.capacity();
+	size_t written = 0;
+	bool result = true;
 
-    if (chunk_size > capacity) {
-      chunk_size = capacity;
-    }
+	while (result && written < data_len) {
+		size_t chunk_size = data_len - written;
 
-    for (size_t i = 0; i < chunk_size; ++i){
-      msg.data.push_back(data[written]);
-      written += 1;
-    }
+		if (chunk_size > capacity) {
+			chunk_size = capacity;
+		}
 
-    result = _pub_rtcm.broadcast(msg) >= 0;
-    msg.data.clear();
-  }
-  
-  return result;
+		for (size_t i = 0; i < chunk_size; ++i) {
+			msg.data.push_back(data[written]);
+			written += 1;
+		}
+
+		result = _pub_rtcm.broadcast(msg) >= 0;
+		msg.data.clear();
+	}
+
+	return result;
 }
 
 
 bool UavcanGnssBridge::PublishMovingBaselineData(const uint8_t *data, size_t data_len)
 {
 	ardupilot::gnss::MovingBaselineData msg;
-	
-  const size_t capacity = msg.data.capacity();
+
+	const size_t capacity = msg.data.capacity();
 	size_t written = 0;
 	bool result = true;
 
