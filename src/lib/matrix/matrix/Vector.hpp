@@ -148,6 +148,18 @@ public:
 
 		return r;
 	}
+
+  Vector zero_if_nan() const
+  {
+    const Vector &a(*this);
+    for (size_t i = 0; i < M; i++){
+      if (!PX4_ISFINITE(a(i))){
+        return Vector();
+      }
+    }
+    return *this;
+  }
+
 };
 
 } // namespace matrix
