@@ -13,6 +13,7 @@
 #include <drivers/drv_hrt.h>
 #include <lib/perf/perf_counter.h>
 #include <lib/matrix/matrix/math.hpp>
+#include <lib/mathlib/math/filter/LowPassFilter2p.hpp>
 
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
@@ -51,36 +52,37 @@ public:
 private:
 	void Run() override;
 
-  hrt_abstime _now;
+	hrt_abstime _now;
 
-  void service_subscriptions();
-  void cb_params();
-  void cb_vehicle_status();
-  void cb_vehicle_local_position();
-  void cb_vehicle_attitude();
-  void cb_vehicle_angular_velocity();
-  void cb_trajectory_setpoint();
+	void service_subscriptions();
+	void cb_params();
+	void cb_vehicle_status();
+	void cb_vehicle_local_position();
+	void cb_vehicle_attitude();
+	void cb_vehicle_angular_velocity();
+	void cb_trajectory_setpoint();
 
-  void update_parameters();
+	void update_parameters();
 
-  void construct_setpoint();
+	void construct_setpoint();
 
-  void compute_cmd();
-  void compute_cmd_accel();
-  void compute_cmd_thrust();
-  void compute_cmd_quaternion();
-  void compute_cmd_ang_accel();
-  void compute_cmd_torque();
+	void compute_cmd();
+	void compute_cmd_accel();
+	void compute_cmd_thrust();
+	void compute_cmd_quaternion();
+	void compute_cmd_ang_accel();
+	void compute_cmd_torque();
 
-  void publish_thrust_cmd();
-  void publish_xi_cmd();
-  void publish_ang_accel_cmd();
-  void publish_torque_cmd();
+	void publish_thrust_cmd();
+	void publish_xi_cmd();
+	void publish_ang_accel_cmd();
+	void publish_torque_cmd();
 
 	// Private Variables
-	
-  Vector3f _a_cmd;
-  Vector3f _a_filt;
+
+	Vector3f _a_cmd;
+	Vector3f _a_filt;
+	Vector3f _bz;
 	Vector3f _tau_bz_cmd;
 	Vector3f _tau_bz_filt;
 	float _thrust_cmd;
@@ -89,11 +91,23 @@ private:
 	float _torque_constant; // NewtonMeters -> PWM normalization factor
 	Quatf _xi_cmd;
 	Matrix3f _J;
+	Vector3f _ang_vel_filt;
 	Vector3f _ang_accel_cmd;
 	Vector3f _ang_accel_filt;
 	Vector3f _torque_filt;
 	Vector3f _torque_cmd;
 
+  math::LowPassFilter2p<Vector3f> _a_filter; 
+  math::LowPassFilter2p<Vector3f> _tau_bz_filter; 
+  math::LowPassFilter2p<Vector3f> _ang_vel_filter;
+  math::LowPassFilter2p<Vector3f> _torque_filter;
+
+  // todo: make these into parameters (or grab them from the respective modules)
+  	const float RATE_LPF = 30.0; // desired cutoff frequency for low-pass filter
+        const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
+  	const float RATE_TAU_BZ = 500.0;
+  	const float RATE_ANG_VEL = 250.0;
+  	const float RATE_TORQUE = 500.0;
 
 
 	vehicle_status_s _vehicle_status;
