@@ -344,7 +344,7 @@ void IndiControl::publish_setpoints(const float acc, const Vector3f ang_accel){
     _vehicle_torque_setpoint_pub.publish(msgM);
   
   if (_armed){
-    PX4_INFO("PUBLISHING: %f, %f, %f, %f :: %f, %f, %f, %f", (double)acc, (double)ang_accel(0), (double)ang_accel(1), (double)ang_accel(2), (double)msgT.xyz[2], (double)msgM.xyz[0],(double)msgM.xyz[1],(double)msgM.xyz[2]);
+    // PX4_INFO("PUBLISHING: %f, %f, %f, %f :: %f, %f, %f, %f", (double)acc, (double)ang_accel(0), (double)ang_accel(1), (double)ang_accel(2), (double)msgT.xyz[2], (double)msgM.xyz[0],(double)msgM.xyz[1],(double)msgM.xyz[2]);
   }
 
 }
