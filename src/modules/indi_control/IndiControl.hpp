@@ -26,6 +26,7 @@
 #include <uORB/topics/vehicle_torque_setpoint.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/trajectory_setpoint.h>
+#include <uORB/topics/actuator_motors.h>
 
 using namespace time_literals;
 using namespace matrix;
@@ -72,30 +73,43 @@ private:
 	void compute_cmd_quaternion();
 	void compute_cmd_ang_accel();
 	void compute_cmd_torque();
+  void compute_cmd_pwm();
+  void compute_cmd_ang_accel_geometric();
 
 	void publish_thrust_cmd();
 	void publish_xi_cmd();
 	void publish_ang_accel_cmd();
 	void publish_torque_cmd();
+  void publish_pwm_cmd();
+  void publish_setpoints(const float acc, const Vector3f ang_accel);
+
+  // Quad_params
+  float _mass;
+	Matrix3f _J;
+  float _max_rpm; // used for RPM -> PWM conversion
+	float _thrust_constant; // Newtons -> PWM normalization factor
+  float _torque_constant;
+  float _max_motor_rpm = 1100; // actually in rad/s
+  Matrix4f _G1;
+  Matrix4f _inv_G1;
+
 
 	// Private Variables
-
 	Vector3f _a_cmd;
 	Vector3f _a_filt;
 	Vector3f _bz;
 	Vector3f _tau_bz_cmd;
 	Vector3f _tau_bz_filt;
 	float _thrust_cmd;
-	float _mass;
-	float _thrust_constant; // Newtons -> PWM normalization factor
-	float _torque_constant; // NewtonMeters -> PWM normalization factor
 	Quatf _xi_cmd;
-	Matrix3f _J;
+  Vector3f _ang_vel;
 	Vector3f _ang_vel_filt;
 	Vector3f _ang_accel_cmd;
 	Vector3f _ang_accel_filt;
 	Vector3f _torque_filt;
 	Vector3f _torque_cmd;
+  Vector4f _rpm_cmd;
+  Vector4f _pwm_cmd;
 
   math::LowPassFilter2p<Vector3f> _a_filter; 
   math::LowPassFilter2p<Vector3f> _tau_bz_filter; 
@@ -104,10 +118,10 @@ private:
 
   // todo: make these into parameters (or grab them from the respective modules)
   	const float RATE_LPF = 30.0; // desired cutoff frequency for low-pass filter
-        const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
+  const float RATE_TORQUE = 800.0;
+   const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
   	const float RATE_TAU_BZ = 500.0;
   	const float RATE_ANG_VEL = 250.0;
-  	const float RATE_TORQUE = 500.0;
 
 
 	vehicle_status_s _vehicle_status;
@@ -119,6 +133,7 @@ private:
 	// Publications
 	uORB::Publication<vehicle_torque_setpoint_s> _vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};
 	uORB::Publication<vehicle_thrust_setpoint_s> _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};
+  uORB::Publication<actuator_motors_s> _actuator_motors_pub{ORB_ID(actuator_motors)};
 
 	// Subscriptions
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};

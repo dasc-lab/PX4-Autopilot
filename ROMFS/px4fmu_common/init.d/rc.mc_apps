@@ -49,16 +49,15 @@ fi
 ###############################################################################
 
 #
-# Start Control Allocator
-#
-control_allocator start
-
-
-#
 # Start Indi Controller
 #
 indi_control start
 
+
+#
+# Start Control Allocator
+#
+control_allocator start
 
 #
 # Start Multicopter Rate Controller.

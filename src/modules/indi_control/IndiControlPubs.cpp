@@ -35,15 +35,34 @@ void IndiControl::publish_ang_accel_cmd()
 void IndiControl::publish_torque_cmd()
 {
 
-  vehicle_torque_setpoint_s msg{};
-  msg.timestamp = hrt_absolute_time();
-  msg.timestamp_sample = _now;
+  // vehicle_torque_setpoint_s msg{};
+  // msg.timestamp = hrt_absolute_time();
+  // msg.timestamp_sample = _now;
 
-  for (size_t i = 0; i < 3; i++) {
-    msg.xyz[i] =  math::constrain(_torque_cmd(i) * 0.005f * _torque_constant, -1.0f, 1.0f);
-  }
+  // for (size_t i = 0; i < 3; i++) {
+  //   msg.xyz[i] =  math::constrain(_torque_cmd(i) * 0.005f * _torque_constant, -1.0f, 1.0f);
+  // }
 
-  _vehicle_torque_setpoint_pub.publish(msg);
+  // _vehicle_torque_setpoint_pub.publish(msg);
 
 }
 
+void IndiControl::publish_pwm_cmd()
+{
+
+  // directly publish the cmd to actuator_motors
+  actuator_motors_s msg;
+  msg.timestamp = hrt_absolute_time();
+  msg.timestamp_sample = _now;
+
+  msg.reversible_flags = 255; // _param_r_rev.get(); // TODO check!
+
+
+  for (size_t i=0; i < 4; i++)
+  {
+    msg.control[i] = _pwm_cmd(i);
+  }
+
+  _actuator_motors_pub.publish(msg);
+
+}

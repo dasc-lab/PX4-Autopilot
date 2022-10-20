@@ -59,8 +59,10 @@ void IndiControl::cb_vehicle_angular_velocity()
 {
 	if (_vehicle_angular_velocity_sub.updated()) {
 		_vehicle_angular_velocity_sub.copy(&_angular_velocity);
-    Vector3f ang_vel ( _angular_velocity.xyz[0], _angular_velocity.xyz[1], _angular_velocity.xyz[2]);
-    _ang_vel_filt = _ang_vel_filter.apply(ang_vel);
+    for (size_t i=0; i<3; i++){
+      _ang_vel(i) = _angular_velocity.xyz[i];
+    }
+    _ang_vel_filt = _ang_vel_filter.apply(_ang_vel);
 	}
 }
 
