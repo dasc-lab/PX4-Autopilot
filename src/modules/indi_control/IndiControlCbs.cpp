@@ -25,6 +25,7 @@ void IndiControl::cb_vehicle_status()
 
 			if (armed && !_armed) {
 				PX4_WARN("vehicle armed due to %d", _vehicle_status.latest_arming_reason);
+				_start = hrt_absolute_time();
 
 			} else if (!armed && _armed) {
 				PX4_INFO("vehicle disarmed due to %d", _vehicle_status.latest_disarming_reason);

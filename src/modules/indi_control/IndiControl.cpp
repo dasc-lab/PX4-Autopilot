@@ -19,7 +19,7 @@ IndiControl::IndiControl() :
 	_setpoint.position[0] = 0.0;
 	_setpoint.position[1] = 0.0;
 	_setpoint.position[2] = -0.25;
-	_setpoint.yaw = 0.0;
+	_setpoint.yaw = M_PI*0.5;
 
 }
 
@@ -74,20 +74,36 @@ void IndiControl::update_parameters()
 
   Vector4f motor_pos_x ( lx, -lx, lx, -lx);
   Vector4f motor_pos_y (ly, -ly, -ly, ly);
-  Vector4f motor_dir (-1, -1, 1, 1); // positive for torque in +bz direction (body FRD frame)
+  Vector4f motor_dir (1, 1, -1, -1); // positive for torque in +bz direction (body FRD frame)
 
-  _G1.zero();
+
+  // construct the effectiveness matrix
+  Matrix4f G;
+  G.zero();
   for (size_t i=0; i<4; i++){
     // torque about body x:
-    _G1(0, i) = motor_pos_y(i) * _thrust_constant;
+    G(0, i) = -motor_pos_y(i) * _thrust_constant;
     // torque about body y:
-    _G1(1, i) = motor_pos_x(i) * _thrust_constant;
+    G(1, i) = motor_pos_x(i) * _thrust_constant;
     // torque about body z:
-    _G1(2, i) = motor_dir(i) * _torque_constant;
+    G(2, i) = motor_dir(i) * _torque_constant * _thrust_constant;
     // thrust in body z:
-    _G1(3, i) = - _thrust_constant;
+    G(3, i) = _thrust_constant;
   }
-  _inv_G1 = _G1.I(); // gets the inverse
+
+  // construct the cost matrix for the allocator QP
+  Matrix4f H;
+  H.zero();
+  H(0,0) = 1.0;
+  H(1,1) = 1.0;
+  H(2,2) = 0.1;
+  H(3,3) = 0.5;
+
+  // update the matrices in the allocator
+  update_allocator_matrices(H, G);
+
+  // set rpm bounds
+  update_allocator_rpm_bounds(0.0, _max_motor_rpm);
 
 }
 
@@ -110,9 +126,9 @@ void IndiControl::compute_cmd_accel()
 	Vector3f k_vel(7.8, 7.8, 5.9);
 	Vector3f k_acc(0.5, 0.5, 0.3);
 
-  k_pos *= 0.1;
-  k_vel *= 0.1;
-  k_acc *= 0.1;
+  // k_pos *= 0.1;
+  // k_vel *= 0.1;
+  // k_acc *= 0.1;
 
 	Vector3f x(_local_position.x,  _local_position.y,  _local_position.z);
 	Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
@@ -206,30 +222,40 @@ void IndiControl::compute_cmd_ang_accel()
 void IndiControl::compute_cmd_torque()
 {
 
-	// EZRA, EQ:31
-	_torque_cmd = _torque_filt.zero_if_nan()
-		      + _J * ((_ang_accel_cmd - _ang_accel_filt).zero_if_nan());
+	// // EZRA, EQ:31
+	// _torque_cmd = _torque_filt.zero_if_nan()
+	// 	      + _J * ((_ang_accel_cmd - _ang_accel_filt).zero_if_nan());
 
 
-	_torque_filt = _torque_filter.apply(_torque_cmd);
+	// _torque_filt = _torque_filter.apply(_torque_cmd);
 	
   //publish_torque_cmd();
+
+  const float k_torque = 1.00; // 0.075;
+
+  _torque_cmd = k_torque * _ang_accel_cmd;
 
 }
 
 void IndiControl::compute_cmd_pwm()
 {
 
-  //_torque_cmd(2) = 0.0;
-
-  // note RPM is actually in units of radians per second
+  // note RPM is actually in units of (1000 radians) per second
 
   // translate from thrust and torque setpoints to motor RPM
   Vector4f mu_T ( _torque_cmd(0), _torque_cmd(1), _torque_cmd(2), _thrust_cmd );
-  Vector4f rpm_sq = _inv_G1 * mu_T;
+  
+  Vector4f rpm_sq = solve_allocator_qp(mu_T);
+  
+  //Vector4f rpm_sq = _inv_G1 * mu_T; // in units of (kilo-rad/s)^2
+
+  // catch negatives
+  for (size_t i=0; i< 4; i++){
+    if (rpm_sq(i) < 0.0f) {rpm_sq(i) = 0.0f;}
+  }
 
   // translate from motor RPM to motor PWM
-  Vector4f rpm = rpm_sq.sqrt();
+  Vector4f rpm = rpm_sq.sqrt(); // in units of kilo-rad/s
 
   for (size_t i=0; i<4; i++){
     _pwm_cmd(i) = rpm(i) / _max_motor_rpm;
@@ -249,14 +275,21 @@ void IndiControl::compute_cmd_pwm()
 void IndiControl::compute_cmd_ang_accel_geometric()
 {
 
-  const Vector3f kx (4.0, 4.0, 4.0);
-  const Vector3f kv (2.0, 2.0, 2.0);
-  const Vector3f kR (0.35, 0.35, 0.35);
-  const Vector3f kOmega (0.1, 0.1, 0.1);
+  const Vector3f kx (2.5, 2.5, 2.5);
+  const Vector3f kv (1.5, 1.5, 1.5);
+  const Vector3f kR (0.6, 0.6, 0.6);
+  const Vector3f kOmega (0.15, 0.15, 0.15);
+
+  const float g = 9.81;
+  Vector3f _z (0,0,1);
+  
+  Vector3f acc;
+
+  if (true){
+    // true = use the geometric controller
+    // false = use the indi controller
 
   // construct the required acceleration vector
-  Vector3f _z (0,0,1);
-  const float g = 9.81;
 
 	Vector3f x(_local_position.x,  _local_position.y,  _local_position.z);
 	Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
@@ -264,14 +297,28 @@ void IndiControl::compute_cmd_ang_accel_geometric()
 	Vector3f x_ref(_setpoint.position);
 	Vector3f v_ref(_setpoint.velocity);
 
-
-  Vector3f acc = -g*_z 
+  acc = -g*_z 
     - kx.emult( (x - x_ref).zero_if_nan())
     - kv.emult( (v - v_ref).zero_if_nan());
 
+  // Vector3f pos_err = x - x_ref;
+  // PX4_INFO("POS ERR: %f, %f, %f", (double)pos_err(0), (double)pos_err(1), (double)pos_err(2));
+  }
+  else {
+    
+    compute_cmd_accel();
+    for (size_t i=0; i<3; i++){
+      acc(i) = _a_cmd(i);
+    }
+    acc += (-g*_z);
+
+  }
+
   Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
 
-  float yaw_ref = 0.0;
+
+  float yaw_ref = _setpoint.yaw;
+
   float b1dx = cosf(yaw_ref);
   float b1dy = sinf(yaw_ref);
   float b1dz = 0.0f;
@@ -301,7 +348,8 @@ void IndiControl::compute_cmd_ang_accel_geometric()
   Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
   
   // total acceleration desired
-  float coll_acc = -acc.dot(rotMat * _z);
+  float coll_acc = acc.dot(rotMat * _z);
+  _thrust_cmd = -coll_acc * _mass;
 
   // desired moments
   Vector3f omega_cross_Jomega = ang_rate.cross(_J * ang_rate);
@@ -312,9 +360,12 @@ void IndiControl::compute_cmd_ang_accel_geometric()
 
   _ang_accel_cmd = _J.I() * (moments - omega_cross_Jomega);
 
+  if (_ang_accel_cmd.has_nan()) {
+    PX4_WARN("ang_accel_cmd has nan");
+    return; 
+  }
 
-
-  publish_setpoints(-coll_acc, _ang_accel_cmd);
+  //publish_setpoints(coll_acc, _ang_accel_cmd);
 
 }
 
@@ -326,21 +377,14 @@ void IndiControl::publish_setpoints(const float acc, const Vector3f ang_accel){
     msgT.xyz[0] = 0.0f;
     msgT.xyz[1] = 0.0f;
     msgT.xyz[2] = (_armed) ? math::constrain( (acc / 9.81f * 0.75f), -1.0f, 1.0f) : 0.0f;
-
-    
-    
     _vehicle_thrust_setpoint_pub.publish(msgT);
   
-
-
     vehicle_torque_setpoint_s msgM{};
     msgM.timestamp = hrt_absolute_time();
     msgM.timestamp_sample = _now;
-
     for (size_t i = 0; i < 3; i++) {
       msgM.xyz[i] =  math::constrain(ang_accel(i) / 35.0f, -1.0f, 1.0f);
     }
-
     _vehicle_torque_setpoint_pub.publish(msgM);
   
   if (_armed){
@@ -362,10 +406,21 @@ void IndiControl::compute_cmd()
   // compute_cmd_pwm();
   
   compute_cmd_ang_accel_geometric();
+	compute_cmd_torque();
+  compute_cmd_pwm();
 }
 
 void IndiControl::construct_setpoint()
 {
+  float time_since_start_s = (float)(_now - _start) * 1.0e-6f;
+  float seconds_per_rev = 5.0f;
+	
+  float phase = 2.0f * (float)M_PI * time_since_start_s / seconds_per_rev;
+
+  _setpoint.position[0] = cos(phase);
+	_setpoint.position[1] = sin(phase);
+	_setpoint.position[2] = -0.25f;
+  _setpoint.yaw = -0.5f * phase;
 }
 
 
@@ -380,7 +435,7 @@ void IndiControl::Run()
 	perf_begin(_loop_perf);
 	perf_count(_loop_interval_perf);
 
-	_now = hrt_abstime();
+	_now = hrt_absolute_time();
 	service_subscriptions();
 	construct_setpoint();
 	compute_cmd();

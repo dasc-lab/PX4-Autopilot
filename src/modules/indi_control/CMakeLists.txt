@@ -1,6 +1,7 @@
 # Indi Controller
 # Devansh Agrawal Oct 2022
 
+# add_subdirectory(allocator_qp)
 
 px4_add_module(
   MODULE modules__indi_control
@@ -11,9 +12,11 @@ px4_add_module(
     IndiControl.cpp
     IndiControlPubs.cpp
     IndiControlCbs.cpp
+    IndiControlAllocator.cpp
     IndiControl.hpp
   DEPENDS
     px4_work_queue
     mathlib
+    allocator_qp
 )
 

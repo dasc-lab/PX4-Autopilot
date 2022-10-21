@@ -28,6 +28,10 @@
 #include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/actuator_motors.h>
 
+
+#include <lib/allocator_qp/include/osqp.h>
+#include <lib/allocator_qp/include/workspace.h>
+
 using namespace time_literals;
 using namespace matrix;
 
@@ -54,6 +58,7 @@ private:
 	void Run() override;
 
 	hrt_abstime _now;
+	hrt_abstime _start;
 
 	void service_subscriptions();
 	void cb_params();
@@ -76,6 +81,10 @@ private:
   void compute_cmd_pwm();
   void compute_cmd_ang_accel_geometric();
 
+  void update_allocator_rpm_bounds(const float min, const float max);
+  void update_allocator_matrices(const Matrix4f H, const Matrix4f G);
+  Vector4f solve_allocator_qp(const Vector4f mu_ref);
+
 	void publish_thrust_cmd();
 	void publish_xi_cmd();
 	void publish_ang_accel_cmd();
@@ -89,9 +98,9 @@ private:
   float _max_rpm; // used for RPM -> PWM conversion
 	float _thrust_constant; // Newtons -> PWM normalization factor
   float _torque_constant;
-  float _max_motor_rpm = 1100; // actually in rad/s
-  Matrix4f _G1;
-  Matrix4f _inv_G1;
+  float _max_motor_rpm = 1.100; // in kilo-rad/s
+  Matrix4f _G;
+  Matrix4f _H; 
 
 
 	// Private Variables
@@ -111,6 +120,7 @@ private:
   Vector4f _rpm_cmd;
   Vector4f _pwm_cmd;
 
+
   math::LowPassFilter2p<Vector3f> _a_filter; 
   math::LowPassFilter2p<Vector3f> _tau_bz_filter; 
   math::LowPassFilter2p<Vector3f> _ang_vel_filter;
@@ -120,7 +130,7 @@ private:
   	const float RATE_LPF = 30.0; // desired cutoff frequency for low-pass filter
   const float RATE_TORQUE = 800.0;
    const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
-  	const float RATE_TAU_BZ = 500.0;
+  	const float RATE_TAU_BZ = RATE_TORQUE;
   	const float RATE_ANG_VEL = 250.0;
 
 
