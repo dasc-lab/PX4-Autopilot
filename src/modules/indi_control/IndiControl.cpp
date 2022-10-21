@@ -126,7 +126,7 @@ void IndiControl::compute_cmd_accel()
 	Vector3f k_vel(7.8, 7.8, 5.9);
 	Vector3f k_acc(0.5, 0.5, 0.3);
 
-  // k_pos *= 0.1;
+  k_pos *= 3.0;
   // k_vel *= 0.1;
   // k_acc *= 0.1;
 
@@ -139,13 +139,23 @@ void IndiControl::compute_cmd_accel()
 	Vector3f a_ref(_setpoint.acceleration);
 
 	// acceleration command (EZRA, EQ:17)
-	_a_cmd = a_ref.zero_if_nan()
+  Vector3f _z (0,0,1);
+	_a_cmd = -9.81f * _z 
+     + a_ref.zero_if_nan()
 		 + k_pos.emult((x_ref - x).zero_if_nan())
 		 + k_vel.emult((v_ref - v).zero_if_nan())
 		 + k_acc.emult((a_ref - _a_filt).zero_if_nan());
+
+  // PX4_INFO("a cmd: %f, %f, %f, filt: %f, %f, %f",
+  //     (double) _a_cmd(0),
+  //     (double) _a_cmd(1),
+  //     (double) _a_cmd(2),
+  //     (double) _a_filt(0),
+  //     (double) _a_filt(1),
+  //     (double) _a_filt(2));
  
  if (_armed){
-  PX4_INFO("POS: %f, %f, %f", (double)x(0), (double)x(1), (double) x(2)); 
+   // PX4_INFO("POS: %f, %f, %f", (double)x(0), (double)x(1), (double) x(2)); 
    // PX4_INFO("Z: %f, _a_cmd: %f, a: %f", (double)_local_position.z, (double)_a_cmd(2), (double)a(2));
  }
 }
@@ -156,11 +166,24 @@ void IndiControl::compute_cmd_thrust()
 	_tau_bz_cmd = _tau_bz_filt + _a_cmd - _a_filt;
 
 	// EZRA, EQ:21
-	_thrust_cmd = - _mass * _tau_bz_cmd.norm();
+  if (_armed){
+	  _thrust_cmd = - _mass * _tau_bz_cmd.norm();
+  }
+  else{
+    _thrust_cmd = 0.0;
+  }
 
-  Vector3f tau_bz = (_thrust_cmd / _mass) * _bz;
+  Vector3f tau_bz = -(_thrust_cmd / _mass) * _bz;
   _tau_bz_filt = _tau_bz_filter.apply(tau_bz);
 
+  PX4_INFO("tau_bz_: %f, %f, %f filt: %f, %f, %f", 
+      (double)tau_bz(0),
+      (double)tau_bz(1),
+      (double)tau_bz(2),
+      (double)_tau_bz_filt(0),
+      (double)_tau_bz_filt(1),
+      (double)_tau_bz_filt(2)
+      );
 	//publish_thrust_cmd();
 }
 
@@ -222,18 +245,29 @@ void IndiControl::compute_cmd_ang_accel()
 void IndiControl::compute_cmd_torque()
 {
 
-	// // EZRA, EQ:31
-	// _torque_cmd = _torque_filt.zero_if_nan()
-	// 	      + _J * ((_ang_accel_cmd - _ang_accel_filt).zero_if_nan());
+  if (false){
+	 // EZRA, EQ:31
+	 _torque_cmd = _torque_filt.zero_if_nan()
+	 	      + _J * ((_ang_accel_cmd - _ang_accel_filt).zero_if_nan());
 
 
-	// _torque_filt = _torque_filter.apply(_torque_cmd);
-	
+	 _torque_filt = _torque_filter.apply(_torque_cmd);
+ 
+  PX4_INFO("ang accel cmd: %f, %f, %f, filt: %f, %f, %f", 
+    (double)_ang_accel_cmd(0),  
+    (double)_ang_accel_cmd(1),  
+    (double)_ang_accel_cmd(2),  
+    (double)_ang_accel_filt(0),
+    (double)_ang_accel_filt(1),
+    (double)_ang_accel_filt(2));
+
   //publish_torque_cmd();
-
+  }
+  else {
   const float k_torque = 1.00; // 0.075;
 
   _torque_cmd = k_torque * _ang_accel_cmd;
+  }
 
 }
 
@@ -285,7 +319,7 @@ void IndiControl::compute_cmd_ang_accel_geometric()
   
   Vector3f acc;
 
-  if (true){
+  if (false){
     // true = use the geometric controller
     // false = use the indi controller
 
@@ -310,7 +344,7 @@ void IndiControl::compute_cmd_ang_accel_geometric()
     for (size_t i=0; i<3; i++){
       acc(i) = _a_cmd(i);
     }
-    acc += (-g*_z);
+    // acc += (-g*_z);
 
   }
 
@@ -348,8 +382,13 @@ void IndiControl::compute_cmd_ang_accel_geometric()
   Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
   
   // total acceleration desired
+  if (false){
   float coll_acc = acc.dot(rotMat * _z);
   _thrust_cmd = -coll_acc * _mass;
+  }
+  else {
+    compute_cmd_thrust();
+  }
 
   // desired moments
   Vector3f omega_cross_Jomega = ang_rate.cross(_J * ang_rate);
@@ -417,10 +456,10 @@ void IndiControl::construct_setpoint()
 	
   float phase = 2.0f * (float)M_PI * time_since_start_s / seconds_per_rev;
 
-  _setpoint.position[0] = cos(phase);
-	_setpoint.position[1] = sin(phase);
+  _setpoint.position[0] = 0.0f * cos(phase);
+	_setpoint.position[1] = 0.0f * sin(phase);
 	_setpoint.position[2] = -0.25f;
-  _setpoint.yaw = -0.5f * phase;
+  _setpoint.yaw = -0.0f * 0.5f * phase;
 }
 
 

@@ -128,7 +128,7 @@ private:
 
   // todo: make these into parameters (or grab them from the respective modules)
   	const float RATE_LPF = 30.0; // desired cutoff frequency for low-pass filter
-  const float RATE_TORQUE = 800.0;
+  const float RATE_TORQUE = 400.0;
    const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
   	const float RATE_TAU_BZ = RATE_TORQUE;
   	const float RATE_ANG_VEL = 250.0;
