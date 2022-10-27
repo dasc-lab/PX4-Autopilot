@@ -8,7 +8,7 @@ using namespace matrix;
 
 IndiControl::IndiControl() 
 	: ModuleParams(nullptr)
-	, ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl)
+	, WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl)
 {
 
 	// set default setpoint
@@ -38,9 +38,15 @@ bool IndiControl::init()
 
 	update_parameters();
 
+
+  if (!_vehicle_angular_velocity_sub.registerCallback()){
+    return false;
+  }
+
+
 	// Run on fixed interval
-  uint32_t interval = (uint32_t)(1.0e6/((double)RATE_TORQUE));
-	ScheduleOnInterval(interval); // 500 us interval, 2000 Hz rate // TODO: Make this a parameter
+  _interval = (uint32_t)(1.0e6/((double)RATE_TORQUE));
+	//ScheduleOnInterval(_interval); // 500 us interval, 2000 Hz rate // TODO: Make this a parameter
 
 	return true;
 }
@@ -367,11 +373,13 @@ void IndiControl::compute_cmd_ang_accel_geometric()
   //const Vector3f kR (0.2, 0.2, 0.1);
   //const Vector3f kOmega (0.05, 0.025, 0.025);
 
-  const Vector3f kR (5.0, 5.0, 5);
-  const Vector3f kOmega (0.5, 0.5, 0.5);
+  //const Vector3f kR (5.0, 5.0, 5);
+  //const Vector3f kOmega (0.5, 0.5, 0.5);
   
-  //const Vector3f kR (1.0, 1.0, 1);
-  //const Vector3f kOmega (0.25, 0.125, 0.125);
+  const Vector3f kR (1.0, 1.0, 1);
+  const Vector3f kOmega (0.25, 0.125, 0.125);
+  
+
   
   const float g = 9.81;
   Vector3f _z (0,0,1);
@@ -537,21 +545,26 @@ void IndiControl::construct_setpoint()
 
 void IndiControl::Run()
 {
-	if (should_exit()) {
-		ScheduleClear();
-		exit_and_cleanup();
-		return;
-	}
+	// if (should_exit()) {
+	// 	ScheduleClear();
+	// 	exit_and_cleanup();
+	// 	return;
+	// }
 
-	perf_begin(_loop_perf);
-	perf_count(_loop_interval_perf);
+	// perf_begin(_loop_perf);
+	// perf_count(_loop_interval_perf);
 
+  
 	_now = hrt_absolute_time();
 	service_subscriptions();
 	construct_setpoint();
 	compute_cmd();
 
-	perf_end(_loop_perf);
+
+  // PX4_INFO("PERIOD: %lu INTERVAL: %u", (_now - _last), _interval);
+  _last = _now;
+
+	// perf_end(_loop_perf);
 }
 
 int IndiControl::task_spawn(int argc, char *argv[])

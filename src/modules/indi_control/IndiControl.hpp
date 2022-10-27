@@ -40,7 +40,7 @@
 using namespace time_literals;
 using namespace matrix;
 
-class IndiControl : public ModuleBase<IndiControl>, public ModuleParams, public px4::ScheduledWorkItem
+class IndiControl : public ModuleBase<IndiControl>, public ModuleParams, public px4::WorkItem
 {
 public:
 	IndiControl();
@@ -63,6 +63,8 @@ private:
 	void Run() override;
 
 	hrt_abstime _now;
+	hrt_abstime _last;
+	uint32_t _interval;
 	hrt_abstime _start;
 
 	void service_subscriptions();
@@ -139,8 +141,8 @@ private:
   math::LowPassFilter2p<Vector3f> _ang_accel_filter;
 
   // todo: make these into parameters (or grab them from the respective modules)
-  	const float RATE_LPF = 30.0; // desired cutoff frequency for low-pass filter
-  const float RATE_TORQUE = 400.0;
+  	const float RATE_LPF = 10.0; // desired cutoff frequency for low-pass filter
+  const float RATE_TORQUE = 250.0;
    // const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
    const float RATE_ACCEL = RATE_TORQUE; // frequency of new acceleration messages
   	const float RATE_TAU_BZ = RATE_TORQUE;
@@ -167,7 +169,7 @@ private:
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
 	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
-	uORB::Subscription _vehicle_angular_velocity_sub{ORB_ID(vehicle_angular_velocity)};
+	uORB::SubscriptionCallbackWorkItem _vehicle_angular_velocity_sub{this, ORB_ID(vehicle_angular_velocity)};
 	uORB::Subscription _vehicle_angular_acceleration_sub{ORB_ID(vehicle_angular_acceleration)};
 	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
 	uORB::Subscription _sensor_accel_sub{ORB_ID(sensor_accel)};
