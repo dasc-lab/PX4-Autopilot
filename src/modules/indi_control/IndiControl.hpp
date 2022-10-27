@@ -14,6 +14,7 @@
 #include <lib/perf/perf_counter.h>
 #include <lib/matrix/matrix/math.hpp>
 #include <lib/mathlib/math/filter/LowPassFilter2p.hpp>
+#include <lib/mathlib/math/WelfordMean.hpp>
 
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
@@ -133,6 +134,7 @@ private:
   Vector4f _rpm_cmd;
   Vector4f _pwm_cmd;
 
+  math::WelfordMean<float, 3> running_pos_err;
 
   math::LowPassFilter2p<Vector3f> _a_filter; 
   math::LowPassFilter2p<Vector3f> _tau_bz_filter; 

@@ -134,10 +134,14 @@ void IndiControl::service_subscriptions()
 
 void IndiControl::compute_cmd_accel()
 {
-	Vector3f k_pos(18, 18, 13.5);
-	Vector3f k_vel(7.8, 7.8, 5.9);
-	Vector3f k_acc(0.5, 0.5, 0.3);
+// 	Vector3f k_pos(18, 18, 13.5);
+// 	Vector3f k_vel(7.8, 7.8, 5.9);
+// 	Vector3f k_acc(0.5, 0.5, 0.3);
 
+	Vector3f k_pos(3, 3, 3);
+	Vector3f k_vel(1,1,1);
+	Vector3f k_acc(0.0, 0.0, 0.0);
+  
   // k_pos *= 3.0;
   // k_vel *= 0.1;
   // k_acc *= 0.1;
@@ -385,17 +389,17 @@ void IndiControl::compute_cmd_ang_accel_geometric()
   Vector3f _z (0,0,1);
   
   Vector3f acc;
+	
+  Vector3f x(_local_position.x,  _local_position.y,  _local_position.z);
+	Vector3f x_ref(_setpoint.position);
 
-  if (true){
+  if (false){
     // true = use the geometric controller
     // false = use the indi controller
 
   // construct the required acceleration vector
-
-	Vector3f x(_local_position.x,  _local_position.y,  _local_position.z);
 	Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
 
-	Vector3f x_ref(_setpoint.position);
 	Vector3f v_ref(_setpoint.velocity);
 
   acc = -g*_z 
@@ -404,6 +408,8 @@ void IndiControl::compute_cmd_ang_accel_geometric()
 
   // Vector3f pos_err = x - x_ref;
   // PX4_INFO("POS ERR: %f, %f, %f", (double)pos_err(0), (double)pos_err(1), (double)pos_err(2));
+  
+  // update the pos error
   }
   else {
     
@@ -411,9 +417,29 @@ void IndiControl::compute_cmd_ang_accel_geometric()
     for (size_t i=0; i<3; i++){
       acc(i) = _a_cmd(i);
     }
-    // acc += (-g*_z);
+    acc += (-g*_z);
 
   }
+
+  if (!(x-x_ref).has_nan() && _armed){
+    running_pos_err.update( (x-x_ref));
+    Vector3f mu = running_pos_err.mean();
+    Vector3f sigma = running_pos_err.variance().sqrt();
+
+    if (running_pos_err.count() > 10000){
+      running_pos_err.reset();
+    }
+
+    PX4_INFO("POS ERROR: (%f +- %f)   (%f +- %f)   (%f +- %f)",
+        (double)mu(0),
+        (double)sigma(0),
+        (double)mu(1),
+        (double)sigma(1),
+        (double)mu(2),
+        (double)sigma(2)
+        );
+  }
+
 
   Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
 
@@ -533,13 +559,23 @@ void IndiControl::construct_setpoint()
 {
   float time_since_start_s = (float)(_now - _start) * 1.0e-6f;
   float seconds_per_rev = 5.0f;
-	
-  float phase = 2.0f * (float)M_PI * time_since_start_s / seconds_per_rev;
 
-  _setpoint.position[0] = 0.0f * cos(phase);
-	_setpoint.position[1] = 0.0f * sin(phase);
+  float omega = 2.0f * (float)M_PI  / seconds_per_rev;  
+  float phase = omega * time_since_start_s; 
+
+
+  float amplitude = 1.0f;
+
+  _setpoint.position[0] = amplitude * cos(phase);
+	_setpoint.position[1] = amplitude * sin(phase);
 	_setpoint.position[2] = -1.25f;
-  _setpoint.yaw = -0.0f * 0.5f * phase;
+ 
+  _setpoint.velocity[0] = - amplitude * omega * sin(phase);
+	_setpoint.velocity[1] = amplitude * omega * cos(phase);
+	_setpoint.velocity[2] = 0.0f; 
+  
+  _setpoint.yaw = - 0.0f*0.5f * phase;
+
 }
 
 
