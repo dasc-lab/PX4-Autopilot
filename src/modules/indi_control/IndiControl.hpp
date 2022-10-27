@@ -23,10 +23,15 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
+#include <uORB/topics/vehicle_angular_acceleration.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/actuator_motors.h>
+#include <uORB/topics/actuator_controls.h>
+#include <uORB/topics/sensor_accel.h>
+#include <uORB/topics/vehicle_attitude_setpoint.h>
+#include <uORB/topics/vehicle_rates_setpoint.h>
 
 
 #include <lib/allocator_qp/include/osqp.h>
@@ -66,6 +71,8 @@ private:
 	void cb_vehicle_local_position();
 	void cb_vehicle_attitude();
 	void cb_vehicle_angular_velocity();
+	void cb_vehicle_angular_acceleration();
+	void cb_sensor_accel();
 	void cb_trajectory_setpoint();
 
 	void update_parameters();
@@ -91,6 +98,8 @@ private:
 	void publish_torque_cmd();
   void publish_pwm_cmd();
   void publish_setpoints(const float acc, const Vector3f ang_accel);
+  void publish_attitude_setpoint(const Dcm<float> rotDes);
+  void publish_rates_setpoint(const Vector3f ang_acc);
 
   // Quad_params
   float _mass;
@@ -104,6 +113,7 @@ private:
 
 
 	// Private Variables
+	Vector3f _a;
 	Vector3f _a_cmd;
 	Vector3f _a_filt;
 	Vector3f _bz;
@@ -113,6 +123,7 @@ private:
 	Quatf _xi_cmd;
   Vector3f _ang_vel;
 	Vector3f _ang_vel_filt;
+	Vector3f _ang_accel;
 	Vector3f _ang_accel_cmd;
 	Vector3f _ang_accel_filt;
 	Vector3f _torque_filt;
@@ -125,13 +136,16 @@ private:
   math::LowPassFilter2p<Vector3f> _tau_bz_filter; 
   math::LowPassFilter2p<Vector3f> _ang_vel_filter;
   math::LowPassFilter2p<Vector3f> _torque_filter;
+  math::LowPassFilter2p<Vector3f> _ang_accel_filter;
 
   // todo: make these into parameters (or grab them from the respective modules)
   	const float RATE_LPF = 30.0; // desired cutoff frequency for low-pass filter
   const float RATE_TORQUE = 400.0;
-   const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
+   // const float RATE_ACCEL = 250.0; // frequency of new acceleration messages
+   const float RATE_ACCEL = RATE_TORQUE; // frequency of new acceleration messages
   	const float RATE_TAU_BZ = RATE_TORQUE;
   	const float RATE_ANG_VEL = 250.0;
+  	const float RATE_ANG_ACC = 250.0;
 
 
 	vehicle_status_s _vehicle_status;
@@ -144,13 +158,19 @@ private:
 	uORB::Publication<vehicle_torque_setpoint_s> _vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};
 	uORB::Publication<vehicle_thrust_setpoint_s> _vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};
   uORB::Publication<actuator_motors_s> _actuator_motors_pub{ORB_ID(actuator_motors)};
+  uORB::Publication<actuator_controls_s> _actuator_controls_pub{ORB_ID(actuator_controls_0)};
+
+  uORB::Publication<vehicle_attitude_setpoint_s> _vehicle_attitude_setpoint_pub{ORB_ID(vehicle_attitude_setpoint)};
+  uORB::Publication<vehicle_rates_setpoint_s> _vehicle_rates_setpoint_pub{ORB_ID(vehicle_rates_setpoint)};
 
 	// Subscriptions
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
 	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
 	uORB::Subscription _vehicle_angular_velocity_sub{ORB_ID(vehicle_angular_velocity)};
+	uORB::Subscription _vehicle_angular_acceleration_sub{ORB_ID(vehicle_angular_acceleration)};
 	uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
+	uORB::Subscription _sensor_accel_sub{ORB_ID(sensor_accel)};
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 

@@ -88,6 +88,7 @@ public:
 		if (!isFinite(_b0) || !isFinite(_b1) || !isFinite(_b2) || !isFinite(_a1) || !isFinite(_a2)) {
 			disable();
 		}
+
 	}
 
 	/**
@@ -158,6 +159,12 @@ public:
 
 		_a1 = 0.f;
 		_a2 = 0.f;
+
+
+	}
+
+	bool is_disabled(){
+		return _sample_freq <= 0.0f;
 	}
 
 protected:
@@ -174,6 +181,7 @@ protected:
 
 	float _cutoff_freq{0.f};
 	float _sample_freq{0.f};
+
 };
 
 } // namespace math

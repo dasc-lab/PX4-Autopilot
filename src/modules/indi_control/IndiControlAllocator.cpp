@@ -66,7 +66,7 @@ Vector4f IndiControl::solve_allocator_qp(const Vector4f mu_ref){
 
   // check status
   if (workspace.info->status_val != OSQP_SOLVED){
-    PX4_WARN("OSQP DIDNT SOLVE SUCCESSFULLY! RETURNED: %lld", workspace.info->status_val );
+    PX4_WARN("OSQP DIDNT SOLVE SUCCESSFULLY! RETURNED: %d", workspace.info->status_val );
   }
 
   // construct solution
