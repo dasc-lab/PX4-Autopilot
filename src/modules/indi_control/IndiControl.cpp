@@ -120,21 +120,13 @@ void IndiControl::service_subscriptions() {
 }
 
 void IndiControl::compute_cmd_accel() {
-  // 	Vector3f k_pos(18, 18, 13.5);
-  // 	Vector3f k_vel(7.8, 7.8, 5.9);
-  //  	Vector3f k_acc(0.5, 0.5, 0.3);
 
-  Vector3f k_pos(3, 3, 3);
-  Vector3f k_vel(1, 1, 1);
+  Vector3f k_pos(3, 3, 2);
+  Vector3f k_vel(1, 1, 0.75);
   Vector3f k_acc(0.0, 0.0, 0.0);
-
-  // k_pos *= 3.0;
-  // k_vel *= 0.1;
-  // k_acc *= 0.1;
 
   Vector3f x(_local_position.x, _local_position.y, _local_position.z);
   Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
-  // Vector3f a(_local_position.ax, _local_position.ay, _local_position.az);
 
   Vector3f x_ref(_setpoint.position);
   Vector3f v_ref(_setpoint.velocity);
@@ -144,81 +136,151 @@ void IndiControl::compute_cmd_accel() {
   _a_cmd = a_ref.zero_if_nan() + k_pos.emult((x_ref - x).zero_if_nan()) +
            k_vel.emult((v_ref - v).zero_if_nan()) +
            k_acc.emult((a_ref - _a_filt).zero_if_nan());
-
-  // PX4_INFO("a cmd: %f, %f, %f, filt: %f, %f, %f",
-  //     (double) _a_cmd(0),
-  //     (double) _a_cmd(1),
-  //     (double) _a_cmd(2),
-  //     (double) _a_filt(0),
-  //     (double) _a_filt(1),
-  //     (double) _a_filt(2));
-
-  if (_armed) {
-    // PX4_INFO("POS: %f, %f, %f", (double)x(0), (double)x(1), (double) x(2));
-    // PX4_INFO("Z: %f, _a_cmd: %f, a: %f", (double)_local_position.z,
-    // (double)_a_cmd(2), (double)a(2));
-  }
 }
 
 void IndiControl::compute_cmd_thrust() {
-  // EZRA, EQ:20
-  _tau_bz_cmd = _tau_bz_filt + (_a_cmd)-_a_filt;
+  bool use_geometric = false;
 
-  // EZRA, EQ:21
-  _thrust_cmd = _mass * _tau_bz_cmd.norm();
+  if (use_geometric) {
+
+    float g = 9.81;
+    Vector3f _z(0, 0, 1);
+
+    Vector3f acc = _a_cmd - g * _z;
+
+    float coll_acc = acc.dot(Quatf(_attitude.q).rotateVector(_z));
+    _thrust_cmd = -coll_acc * _mass;
+  } else {
+    // EZRA, EQ:20
+    _tau_bz_cmd = _tau_bz_filt + _a_cmd - _a_filt;
+
+    // EZRA, EQ:21
+    _thrust_cmd = _mass * _tau_bz_cmd.norm();
+  }
 }
 
 void IndiControl::compute_cmd_quaternion() {
-  // get body to inertial quaterion
-  Quatf xi(_attitude.q);
+  bool use_geometric = true;
+  if (use_geometric) {
+    const float g = 9.81;
+    Vector3f _z(0, 0, 1);
 
-  // EZRA, EQ:22
-  Vector3f neg_bz_cmd_body = xi.rotateVectorInverse(-_tau_bz_cmd);
+    Vector3f acc = _a_cmd - g * _z;
 
-  // EZRA, EQ:23
-  Vector3f iz(0, 0, 1);
-  Quatf xi_bar(iz, neg_bz_cmd_body); // min rotation constructor (defined in
-                                     // matrix/Quaternion.hpp)
+    Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
 
-  // EZRA, EQ:24
-  const float yaw_ref = _setpoint.yaw;
-  Vector3f heading_vec_inertial(std::sin(yaw_ref), -std::cos(yaw_ref), 0);
-  Quatf xi_xi_bar = xi * xi_bar;
-  Vector3f heading_vec_bar =
-      xi_xi_bar.rotateVectorInverse(heading_vec_inertial);
+    float yaw_ref = _setpoint.yaw;
 
-  // EZRA, EQ:25
-  Quatf xi_yaw(1, 0, 0, -heading_vec_bar(0) / heading_vec_bar(1));
-  xi_yaw.normalize();
+    float b1dx = cosf(yaw_ref);
+    float b1dy = sinf(yaw_ref);
+    float b1dz = 0.0f;
 
-  // EZRA, EQ:26
-  _xi_cmd = xi_bar * xi_yaw;
+    const Vector3f b1d(b1dx, b1dy, b1dz);
+    const Vector3f b2d = b3d.cross(b1d).unit();
+    const Vector3f b1d_new = b2d.cross(b3d).unit();
 
-  publish_xi_cmd();
+    // construct desired rot matrix
+    Dcm<float> rotDes;
+    for (size_t i = 0; i < 3; i++) {
+      rotDes(i, 0) = b1d_new(i);
+      rotDes(i, 1) = b2d(i);
+      rotDes(i, 2) = b3d(i);
+    }
+
+    _xi_cmd = Quatf(rotDes);
+  } else {
+
+    // get body to inertial quaterion
+    Quatf xi(_attitude.q);
+
+    // EZRA, EQ:22
+    Vector3f neg_bz_cmd_body = xi.rotateVectorInverse(-_tau_bz_cmd);
+
+    // EZRA, EQ:23
+    Vector3f iz(0, 0, 1);
+    Quatf xi_bar(iz, neg_bz_cmd_body); // min rotation constructor (defined in
+                                       // matrix/Quaternion.hpp)
+
+    // EZRA, EQ:24
+    const float yaw_ref = _setpoint.yaw;
+    Vector3f heading_vec_inertial(std::sin(yaw_ref), -std::cos(yaw_ref), 0);
+    Quatf xi_xi_bar = xi * xi_bar;
+    Vector3f heading_vec_bar =
+        xi_xi_bar.rotateVectorInverse(heading_vec_inertial);
+
+    // EZRA, EQ:25
+    Quatf xi_yaw(1, 0, 0, -heading_vec_bar(0) / heading_vec_bar(1));
+    xi_yaw.normalize();
+
+    // EZRA, EQ:26
+    _xi_cmd = xi_bar * xi_yaw;
+  }
+  // publish_xi_cmd();
 }
 
 void IndiControl::compute_cmd_ang_accel() {
 
-  // // EZRA, EQ:27
-  // float xi_w = _xi_cmd(0);
-  // Vector3f xi_e = (2.0f * std::acos(xi_w) / std::sqrt(1.0f - xi_w * xi_w)) *
-  // _xi_cmd.imag();
+  bool use_geometric = true;
 
-  // Vector3f k_xi(175, 175, 82);
-  // Vector3f k_omega(19.5, 19.5, 19.2);
+  if (use_geometric) {
 
-  // k_xi *= 0.01;
-  // k_omega *= 0.01;
+    const Vector3f kR(1.0, 1.0, 0.5);
+    const Vector3f kOmega(0.125, 0.125, 0.125 / 2.0);
 
-  // Vector3f ang_vel_ref(0, 0, 0); //TODO: FIX
-  // Vector3f ang_accel_ref(0, 0, 0); // TODO: FIX
+    // get the desired rotation matrix
+    Dcm<float> rotDes(_xi_cmd);
 
-  // // EZRA, EQ:28
-  // _ang_accel_cmd = ang_accel_ref.zero_if_nan()
-  // 		 + k_xi.emult(xi_e.zero_if_nan())
-  // 		 + k_omega.emult((ang_vel_ref - _ang_vel_filt).zero_if_nan());
-  // // why do i need the filtered version?
+    // construct current rot matrix
+    Dcm<float> rotMat(Quatf(_attitude.q));
 
+    // get rotation error
+    Vector3f rotMat_err =
+        0.5f *
+        ((Dcm<float>)((rotDes.T() * rotMat - rotMat.T() * rotDes))).vee();
+
+    // error in angular rate
+    Vector3f ang_rate(_ang_vel);
+    Vector3f ang_rate_sp(0, 0, 0);
+    Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
+
+    if (false) {
+      // desired moments
+      Vector3f omega_cross_Jomega = ang_rate.cross(_J * ang_rate);
+
+      Vector3f moments =
+          -kR.emult(rotMat_err) - kOmega.emult(ang_rate_err) +
+          omega_cross_Jomega -
+          _J * (ang_rate.hat() * rotMat.T() * rotDes * ang_rate_sp);
+
+      _ang_accel_cmd = _J.I() * (moments - omega_cross_Jomega);
+
+    } else {
+
+      _ang_accel_cmd =
+          _J.I() * (-kR.emult(rotMat_err) - kOmega.emult(ang_rate_err));
+    }
+
+  } else {
+    // // EZRA, EQ:27
+    // float xi_w = _xi_cmd(0);
+    // Vector3f xi_e = (2.0f * std::acos(xi_w) / std::sqrt(1.0f - xi_w * xi_w))
+    // * _xi_cmd.imag();
+
+    // Vector3f k_xi(175, 175, 82);
+    // Vector3f k_omega(19.5, 19.5, 19.2);
+
+    // k_xi *= 0.01;
+    // k_omega *= 0.01;
+
+    // Vector3f ang_vel_ref(0, 0, 0); //TODO: FIX
+    // Vector3f ang_accel_ref(0, 0, 0); // TODO: FIX
+
+    // // EZRA, EQ:28
+    // _ang_accel_cmd = ang_accel_ref.zero_if_nan()
+    // 		 + k_xi.emult(xi_e.zero_if_nan())
+    // 		 + k_omega.emult((ang_vel_ref - _ang_vel_filt).zero_if_nan());
+    // // why do i need the filtered version?
+  }
   // publish_ang_accel_cmd();
 }
 
@@ -280,137 +342,6 @@ void IndiControl::compute_cmd_pwm() {
   publish_pwm_cmd();
 }
 
-void IndiControl::compute_cmd_ang_accel_geometric() {
-
-  const Vector3f kx(2.5, 2.5, 2.5);
-  const Vector3f kv(1.5, 1.5, 1.5);
-  // const Vector3f kR (0.2, 0.2, 0.1);
-  // const Vector3f kOmega (0.05, 0.025, 0.025);
-
-  // const Vector3f kR (5.0, 5.0, 5);
-  // const Vector3f kOmega (0.5, 0.5, 0.5);
-
-  const Vector3f kR(1.0, 1.0, 0.5);
-  const Vector3f kOmega(0.125, 0.125, 0.125 / 2.0);
-
-  const float g = 9.81;
-  Vector3f _z(0, 0, 1);
-
-  Vector3f acc;
-
-  Vector3f x(_local_position.x, _local_position.y, _local_position.z);
-  Vector3f x_ref(_setpoint.position);
-
-  if (false) {
-    // true = use the geometric controller
-    // false = use the indi controller
-
-    // construct the required acceleration vector
-    Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
-
-    Vector3f v_ref(_setpoint.velocity);
-
-    acc = -g * _z - kx.emult((x - x_ref).zero_if_nan()) -
-          kv.emult((v - v_ref).zero_if_nan());
-
-    // update the pos error
-  } else {
-
-    compute_cmd_accel();
-    for (size_t i = 0; i < 3; i++) {
-      acc(i) = _a_cmd(i);
-    }
-    acc += (-g * _z);
-  }
-
-  // print pos error
-  if (!(x - x_ref).has_nan() && _armed) {
-    running_pos_err.update((x - x_ref));
-    Vector3f mu = running_pos_err.mean();
-    Vector3f sigma = running_pos_err.variance().sqrt();
-
-    if (running_pos_err.count() > 10000) {
-      running_pos_err.reset();
-    }
-
-    // PX4_INFO("POS ERROR: %f, %f, %f",
-    //     (double)(x-x_ref)(0),
-    //     (double)(x-x_ref)(1),
-    //     (double)(x-x_ref)(2));
-
-    PX4_INFO("POS ERROR: (%f +- %f)   (%f +- %f)   (%f +- %f)", (double)mu(0),
-             (double)sigma(0), (double)mu(1), (double)sigma(1), (double)mu(2),
-             (double)sigma(2));
-  }
-
-  Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
-
-  float yaw_ref = _setpoint.yaw;
-
-  float b1dx = cosf(yaw_ref);
-  float b1dy = sinf(yaw_ref);
-  float b1dz = 0.0f;
-
-  const Vector3f b1d(b1dx, b1dy, b1dz);
-  const Vector3f b2d = b3d.cross(b1d).unit();
-  const Vector3f b1d_new = b2d.cross(b3d).unit();
-
-  // construct desired rot matrix
-  Dcm<float> rotDes;
-  for (size_t i = 0; i < 3; i++) {
-    rotDes(i, 0) = b1d_new(i);
-    rotDes(i, 1) = b2d(i);
-    rotDes(i, 2) = b3d(i);
-  }
-
-  // construct current rot matrix
-  Quatf ang_att(_attitude.q);
-  Dcm<float> rotMat(ang_att);
-
-  // get rotation error
-  Vector3f rotMat_err =
-      0.5f * ((Dcm<float>)((rotDes.T() * rotMat - rotMat.T() * rotDes))).vee();
-
-  // error in angular rate
-  Vector3f ang_rate(_ang_vel);
-  Vector3f ang_rate_sp(0, 0, 0);
-  Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
-
-  // total acceleration desired
-  if (false) {
-    float coll_acc = acc.dot(rotMat * _z);
-    _thrust_cmd = -coll_acc * _mass;
-  } else {
-    compute_cmd_thrust();
-  }
-
-  if (false) {
-    // desired moments
-    Vector3f omega_cross_Jomega = ang_rate.cross(_J * ang_rate);
-
-    Vector3f moments =
-        -kR.emult(rotMat_err) - kOmega.emult(ang_rate_err) +
-        omega_cross_Jomega -
-        _J * (ang_rate.hat() * rotMat.T() * rotDes * ang_rate_sp);
-
-    _ang_accel_cmd = _J.I() * (moments - omega_cross_Jomega);
-
-    if (_ang_accel_cmd.has_nan()) {
-      PX4_WARN("ang_accel_cmd has nan");
-      return;
-    }
-  } else {
-
-    _ang_accel_cmd =
-        _J.I() * (-kR.emult(rotMat_err) - kOmega.emult(ang_rate_err));
-  }
-
-  publish_attitude_setpoint(rotDes);
-  publish_rates_setpoint(_ang_accel_cmd);
-
-  // publish_setpoints(coll_acc, _ang_accel_cmd);
-}
-
 void IndiControl::publish_setpoints(const float acc, const Vector3f ang_accel) {
 
   vehicle_thrust_setpoint_s msgT;
@@ -431,7 +362,7 @@ void IndiControl::publish_setpoints(const float acc, const Vector3f ang_accel) {
   _vehicle_torque_setpoint_pub.publish(msgM);
 
   if (_armed) {
-    // PX4_INFO("PUBLISHING: %f, %f, %f, %f :: %f, %f, %f, %f", (double)acc,
+    // P X4_INFO("PUBLISHING: %f, %f, %f, %f :: %f, %f, %f, %f", (double)acc,
     // (double)ang_accel(0), (double)ang_accel(1), (double)ang_accel(2),
     // (double)msgT.xyz[2],
     // (double)msgM.xyz[0],(double)msgM.xyz[1],(double)msgM.xyz[2]);
@@ -441,16 +372,36 @@ void IndiControl::publish_setpoints(const float acc, const Vector3f ang_accel) {
 void IndiControl::compute_cmd() {
 
   // run the main controller
-  // compute_cmd_accel();
-  // compute_cmd_thrust();
-  // compute_cmd_quaternion();
-  // compute_cmd_ang_accel();
-  // compute_cmd_torque();
-  // compute_cmd_pwm();
-
-  compute_cmd_ang_accel_geometric();
+  compute_cmd_accel();
+  compute_cmd_thrust();
+  compute_cmd_quaternion();
+  compute_cmd_ang_accel();
   compute_cmd_torque();
   compute_cmd_pwm();
+
+  // // print pos error
+  // Vector3f x(_local_position.x, _local_position.y, _local_position.z);
+  // Vector3f x_ref(_setpoint.position);
+  // if (!(x - x_ref).has_nan() && _armed) {
+  //   running_pos_err.update((x - x_ref));
+  //   // Vector3f mu = running_pos_err.mean();
+  //   // Vector3f sigma = running_pos_err.variance().sqrt();
+
+  //   if (running_pos_err.count() > 10000) {
+  //     running_pos_err.reset();
+  //   }
+
+  //   // PX4_INFO("POS ERROR: %f, %f, %f",
+  //   //     (double)(x-x_ref)(0),
+  //   //     (double)(x-x_ref)(1),
+  //   //     (double)(x-x_ref)(2));
+
+  //   // PX4_INFO("POS ERROR: (%f +- %f)   (%f +- %f)   (%f +- %f)",
+  //   (double)mu(0),
+  //   //         (double)sigma(0), (double)mu(1), (double)sigma(1),
+  //   (double)mu(2),
+  //   //         (double)sigma(2));
+  // }
 }
 
 void IndiControl::construct_setpoint() {
