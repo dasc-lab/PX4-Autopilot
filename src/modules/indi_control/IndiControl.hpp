@@ -194,7 +194,7 @@ private:
   // Parameters
   DEFINE_PARAMETERS(
       //(ParamInt<px4::params::SYS_AUTOSTART>) _param_sys_autostart,   /**<
-      //example parameter */ (ParamInt<px4::params::SYS_AUTOCONFIG>)
+      // example parameter */ (ParamInt<px4::params::SYS_AUTOCONFIG>)
       //_param_sys_autoconfig  /**< another parameter */
       (ParamFloat<px4::params::INDI_QUAD_MASS>)_param_mass,
       (ParamFloat<px4::params::INDI_THRUST_K>)_param_thrust_constant,

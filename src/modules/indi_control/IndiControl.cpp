@@ -122,7 +122,7 @@ void IndiControl::service_subscriptions() {
 void IndiControl::compute_cmd_accel() {
   // 	Vector3f k_pos(18, 18, 13.5);
   // 	Vector3f k_vel(7.8, 7.8, 5.9);
-  // 	Vector3f k_acc(0.5, 0.5, 0.3);
+  //  	Vector3f k_acc(0.5, 0.5, 0.3);
 
   Vector3f k_pos(3, 3, 3);
   Vector3f k_vel(1, 1, 1);
@@ -162,30 +162,10 @@ void IndiControl::compute_cmd_accel() {
 
 void IndiControl::compute_cmd_thrust() {
   // EZRA, EQ:20
-  _tau_bz_cmd = _tau_bz_filt + _a_cmd - _a_filt;
+  _tau_bz_cmd = _tau_bz_filt + (_a_cmd)-_a_filt;
 
   // EZRA, EQ:21
-  // if (_armed){
-  _thrust_cmd = -_mass * _tau_bz_cmd.norm();
-  //}
-  // else{
-  //  _thrust_cmd = 0.0;
-  //}
-
-  // check that the filter is not disabled
-  if (_tau_bz_filter.is_disabled()) {
-    PX4_WARN("DISABLED FILTER");
-  }
-
-  // PX4_INFO("tau_bz_: %f, %f, %f filt: %f, %f, %f",
-  //     (double)tau_bz(0),
-  //     (double)tau_bz(1),
-  //     (double)tau_bz(2),
-  //     (double)_tau_bz_filt(0),
-  //     (double)_tau_bz_filt(1),
-  //     (double)_tau_bz_filt(2)
-  //     );
-  // publish_thrust_cmd();
+  _thrust_cmd = _mass * _tau_bz_cmd.norm();
 }
 
 void IndiControl::compute_cmd_quaternion() {
@@ -236,44 +216,17 @@ void IndiControl::compute_cmd_ang_accel() {
   // // EZRA, EQ:28
   // _ang_accel_cmd = ang_accel_ref.zero_if_nan()
   // 		 + k_xi.emult(xi_e.zero_if_nan())
-  // 		 + k_omega.emult((ang_vel_ref - _ang_vel_filt).zero_if_nan());    //
-  // why do i need the filtered version?
+  // 		 + k_omega.emult((ang_vel_ref - _ang_vel_filt).zero_if_nan());
+  // // why do i need the filtered version?
 
   // publish_ang_accel_cmd();
 }
 
 void IndiControl::compute_cmd_torque() {
 
-  if (true) {
-    // EZRA, EQ:31
-    _torque_cmd = _torque_filt.zero_if_nan() +
-                  _J * ((_ang_accel_cmd - _ang_accel).zero_if_nan());
-
-    //_torque_cmd = _J * _ang_accel_cmd;
-
-    // PX4_INFO("_torque_cmd: %f,%f,%f filt: %f,%f,%f",
-    //     (double)_torque_cmd(0),
-    //     (double)_torque_cmd(1),
-    //     (double)_torque_cmd(2),
-    //     (double)_torque_filt(0),
-    //     (double)_torque_filt(1),
-    //     (double)_torque_filt(2)
-    //     );
-
-    //  PX4_INFO("ang accel cmd: %f, %f, %f, filt: %f, %f, %f",
-    //    (double)_ang_accel_cmd(0),
-    //    (double)_ang_accel_cmd(1),
-    //    (double)_ang_accel_cmd(2),
-    //    (double)_ang_accel_filt(0),
-    //    (double)_ang_accel_filt(1),
-    //    (double)_ang_accel_filt(2));
-
-    // publish_torque_cmd();
-  } else {
-    const float k_torque = 1.00; // 0.075;
-
-    _torque_cmd = k_torque * _ang_accel_cmd;
-  }
+  // EZRA, EQ:31
+  _torque_cmd = _torque_filt.zero_if_nan() +
+                _J * ((_ang_accel_cmd - _ang_accel).zero_if_nan());
 }
 
 void IndiControl::compute_cmd_pwm() {
@@ -285,8 +238,6 @@ void IndiControl::compute_cmd_pwm() {
 
   Vector4f rpm_sq = solve_allocator_qp(mu_T);
 
-  // Vector4f rpm_sq = _inv_G1 * mu_T; // in units of (kilo-rad/s)^2
-
   // catch negatives
   for (size_t i = 0; i < 4; i++) {
     if (rpm_sq(i) < 0.0f) {
@@ -297,6 +248,7 @@ void IndiControl::compute_cmd_pwm() {
   // translate from motor RPM to motor PWM
   Vector4f rpm = rpm_sq.sqrt(); // in units of kilo-rad/s
 
+  // map to RPM
   for (size_t i = 0; i < 4; i++) {
     _pwm_cmd(i) = rpm(i) / _max_motor_rpm;
     _pwm_cmd(i) = math::constrain(_pwm_cmd(i), -1.0f, 1.0f);
@@ -306,10 +258,11 @@ void IndiControl::compute_cmd_pwm() {
   Vector4f mu_T_applied = _G * rpm_sq;
 
   // // update tau_bz filter
-  // float thrust = mu_T_applied(3);
-  // Vector3f tau_bz = -(thrust / _mass) * _bz;
-  // _tau_bz_filt = _tau_bz_filter.apply(tau_bz);
-
+  float thrust = mu_T_applied(3);
+  Vector3f tau_bz = -(thrust / _mass) * _bz;
+  if (!tau_bz.has_nan()) {
+    _tau_bz_filt = _tau_bz_filter.apply(tau_bz);
+  }
   // update torque filt
   Vector3f torque_applied;
   for (size_t i = 0; i < 3; i++) {
@@ -323,22 +276,6 @@ void IndiControl::compute_cmd_pwm() {
   if (!_a.has_nan()) {
     _a_filt = _a_filter.apply(_a);
   }
-  // PX4_INFO("tau_bz: (%f, %f, %f), _filt: (%f, %f, %f)",
-  //     (double)tau_bz(0),
-  //     (double)tau_bz(1),
-  //     (double)tau_bz(2),
-  //     (double)_tau_bz_filt(0),
-  //     (double)_tau_bz_filt(1),
-  //     (double)_tau_bz_filt(2)
-  //     );
-  // PX4_INFO("_a: (%f, %f, %f), _filt: (%f, %f, %f)",
-  //     (double)_a(0),
-  //     (double)_a(1),
-  //     (double)_a(2),
-  //     (double)_a_filt(0),
-  //     (double)_a_filt(1),
-  //     (double)_a_filt(2)
-  //     );
 
   publish_pwm_cmd();
 }
@@ -353,8 +290,8 @@ void IndiControl::compute_cmd_ang_accel_geometric() {
   // const Vector3f kR (5.0, 5.0, 5);
   // const Vector3f kOmega (0.5, 0.5, 0.5);
 
-  const Vector3f kR(1.0, 1.0, 1);
-  const Vector3f kOmega(0.25, 0.125, 0.125);
+  const Vector3f kR(1.0, 1.0, 0.5);
+  const Vector3f kOmega(0.125, 0.125, 0.125 / 2.0);
 
   const float g = 9.81;
   Vector3f _z(0, 0, 1);
@@ -376,10 +313,6 @@ void IndiControl::compute_cmd_ang_accel_geometric() {
     acc = -g * _z - kx.emult((x - x_ref).zero_if_nan()) -
           kv.emult((v - v_ref).zero_if_nan());
 
-    // Vector3f pos_err = x - x_ref;
-    // PX4_INFO("POS ERR: %f, %f, %f", (double)pos_err(0), (double)pos_err(1),
-    // (double)pos_err(2));
-
     // update the pos error
   } else {
 
@@ -390,6 +323,7 @@ void IndiControl::compute_cmd_ang_accel_geometric() {
     acc += (-g * _z);
   }
 
+  // print pos error
   if (!(x - x_ref).has_nan() && _armed) {
     running_pos_err.update((x - x_ref));
     Vector3f mu = running_pos_err.mean();
@@ -398,6 +332,11 @@ void IndiControl::compute_cmd_ang_accel_geometric() {
     if (running_pos_err.count() > 10000) {
       running_pos_err.reset();
     }
+
+    // PX4_INFO("POS ERROR: %f, %f, %f",
+    //     (double)(x-x_ref)(0),
+    //     (double)(x-x_ref)(1),
+    //     (double)(x-x_ref)(2));
 
     PX4_INFO("POS ERROR: (%f +- %f)   (%f +- %f)   (%f +- %f)", (double)mu(0),
              (double)sigma(0), (double)mu(1), (double)sigma(1), (double)mu(2),
@@ -438,7 +377,7 @@ void IndiControl::compute_cmd_ang_accel_geometric() {
   Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
 
   // total acceleration desired
-  if (true) {
+  if (false) {
     float coll_acc = acc.dot(rotMat * _z);
     _thrust_cmd = -coll_acc * _mass;
   } else {
@@ -521,7 +460,7 @@ void IndiControl::construct_setpoint() {
   float omega = 2.0f * (float)M_PI / seconds_per_rev;
   float phase = omega * time_since_start_s;
 
-  float amplitude = 1.0f;
+  float amplitude = 0.5f;
 
   _setpoint.position[0] = amplitude * cos(phase);
   _setpoint.position[1] = amplitude * sin(phase);
@@ -531,18 +470,22 @@ void IndiControl::construct_setpoint() {
   _setpoint.velocity[1] = amplitude * omega * cos(phase);
   _setpoint.velocity[2] = 0.0f;
 
+  _setpoint.acceleration[0] = -amplitude * omega * omega * cos(phase);
+  _setpoint.acceleration[1] = -amplitude * omega * omega * sin(phase);
+  _setpoint.acceleration[2] = 0.0f;
+
   _setpoint.yaw = -0.0f * 0.5f * phase;
 }
 
 void IndiControl::Run() {
-  // if (should_exit()) {
-  // 	ScheduleClear();
-  // 	exit_and_cleanup();
-  // 	return;
-  // }
+  if (should_exit()) {
+    ScheduleClear();
+    exit_and_cleanup();
+    return;
+  }
 
-  // perf_begin(_loop_perf);
-  // perf_count(_loop_interval_perf);
+  perf_begin(_loop_perf);
+  perf_count(_loop_interval_perf);
 
   _now = hrt_absolute_time();
   service_subscriptions();
@@ -552,7 +495,7 @@ void IndiControl::Run() {
   // PX4_INFO("PERIOD: %lu INTERVAL: %u", (_now - _last), _interval);
   _last = _now;
 
-  // perf_end(_loop_perf);
+  perf_end(_loop_perf);
 }
 
 int IndiControl::task_spawn(int argc, char *argv[]) {
