@@ -20,6 +20,7 @@
 #include <uORB/SubscriptionCallback.hpp>
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_motors.h>
+#include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/sensor_accel.h>
 #include <uORB/topics/trajectory_setpoint.h>
@@ -27,6 +28,7 @@
 #include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
+#include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
@@ -70,26 +72,29 @@ private:
   void service_subscriptions();
   void cb_params();
   void cb_vehicle_status();
+  void cb_vehicle_control_mode();
   void cb_vehicle_local_position();
   void cb_vehicle_attitude();
   void cb_vehicle_angular_velocity();
   void cb_vehicle_angular_acceleration();
   void cb_sensor_accel();
   void cb_trajectory_setpoint();
-
+  void cb_manual_control_setpoint();
   void update_parameters();
 
   void construct_setpoint();
 
+  bool check_flight_mode();
+
   void compute_cmd();
   void compute_cmd_accel();
   void compute_cmd_thrust();
+  void compute_cmd_thrust_manual();
   void compute_cmd_quaternion();
+  void compute_cmd_quaternion_manual();
   void compute_cmd_ang_accel();
   void compute_cmd_torque();
   void compute_cmd_pwm();
-  void compute_cmd_ang_accel_geometric();
-
   void update_allocator_rpm_bounds(const float min, const float max);
   void update_allocator_matrices(const Matrix4f H, const Matrix4f G);
   Vector4f solve_allocator_qp(const Vector4f mu_ref);
@@ -131,6 +136,7 @@ private:
   Vector3f _torque_cmd;
   Vector4f _rpm_cmd;
   Vector4f _pwm_cmd;
+  float _manual_yaw_setpoint = 0.0f;
 
   math::WelfordMean<float, 3> running_pos_err;
 
@@ -139,6 +145,7 @@ private:
   math::LowPassFilter2p<Vector3f> _ang_vel_filter;
   math::LowPassFilter2p<Vector3f> _torque_filter;
   math::LowPassFilter2p<Vector3f> _ang_accel_filter;
+  math::LowPassFilter2p<float> _manual_control_z_filter;
 
   // todo: make these into parameters (or grab them from the respective modules)
   const float RATE_LPF = 10.0; // desired cutoff frequency for low-pass filter
@@ -149,13 +156,15 @@ private:
   const float RATE_TAU_BZ = RATE_TORQUE;
   const float RATE_ANG_VEL = 250.0;
   const float RATE_ANG_ACC = 250.0;
+  const float RATE_MANUAL_Z = 2.0f;
 
   vehicle_status_s _vehicle_status;
   vehicle_local_position_s _local_position;
   vehicle_attitude_s _attitude;
   vehicle_angular_velocity_s _angular_velocity;
   trajectory_setpoint_s _setpoint;
-
+  vehicle_control_mode_s _vehicle_control_mode;
+  manual_control_setpoint_s _manual_control_setpoint;
   // Publications
   uORB::Publication<vehicle_torque_setpoint_s> _vehicle_torque_setpoint_pub{
       ORB_ID(vehicle_torque_setpoint)};
@@ -182,9 +191,12 @@ private:
       ORB_ID(vehicle_angular_acceleration)};
   uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
   uORB::Subscription _sensor_accel_sub{ORB_ID(sensor_accel)};
-
+  uORB::Subscription _manual_control_setpoint_sub{
+      ORB_ID(manual_control_setpoint)};
   uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update),
                                                    1_s};
+  uORB::SubscriptionInterval _vehicle_control_mode_sub{
+      ORB_ID(vehicle_control_mode), 1_s};
 
   // Performance (perf) counters
   perf_counter_t _loop_perf{perf_alloc(PC_ELAPSED, MODULE_NAME ": cycle")};

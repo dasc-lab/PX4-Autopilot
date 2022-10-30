@@ -21,6 +21,7 @@ IndiControl::IndiControl()
   _ang_accel_filter.set_cutoff_frequency(RATE_ANG_ACC, RATE_LPF);
   _a_filter.set_cutoff_frequency(RATE_ACCEL, RATE_LPF);
   _torque_filter.set_cutoff_frequency(RATE_TORQUE, RATE_LPF);
+  _manual_control_z_filter.set_cutoff_frequency(RATE_TORQUE, RATE_MANUAL_Z);
 }
 
 IndiControl::~IndiControl() {
@@ -111,6 +112,8 @@ void IndiControl::service_subscriptions() {
 
   cb_params();
   cb_vehicle_status();
+  cb_vehicle_control_mode();
+  cb_manual_control_setpoint();
   cb_vehicle_local_position();
   cb_vehicle_attitude();
   cb_vehicle_angular_velocity();
@@ -157,6 +160,15 @@ void IndiControl::compute_cmd_thrust() {
     // EZRA, EQ:21
     _thrust_cmd = _mass * _tau_bz_cmd.norm();
   }
+}
+
+void IndiControl::compute_cmd_thrust_manual() {
+
+  const float max_thrust =
+      0.75f * 4.0f * _thrust_constant * _max_motor_rpm * _max_motor_rpm;
+
+  _thrust_cmd =
+      _manual_control_z_filter.apply(_manual_control_setpoint.z) * max_thrust;
 }
 
 void IndiControl::compute_cmd_quaternion() {
@@ -216,6 +228,54 @@ void IndiControl::compute_cmd_quaternion() {
     _xi_cmd = xi_bar * xi_yaw;
   }
   // publish_xi_cmd();
+}
+
+void IndiControl::compute_cmd_quaternion_manual() {
+
+  const float g = 9.81;
+  const Vector3f _z(0, 0, 1);
+
+  const float max_angle = 30.0f;
+
+  const float max_acc = g * std::tan(max_angle * ((float)M_PI) / 180.f);
+
+  const float max_yaw_rate = 2.0f * (float)M_PI / 8.0f;
+
+  // update yaw setpoint
+  _manual_yaw_setpoint +=
+      _manual_control_setpoint.r * max_yaw_rate / RATE_TORQUE;
+
+  // determine desired roll and pitch
+  float p_acc = _manual_control_setpoint.x * max_acc;
+  float r_acc = _manual_control_setpoint.y * max_acc;
+
+  float c = cosf(_manual_yaw_setpoint);
+  float s = sinf(_manual_yaw_setpoint);
+
+  const Vector3f acc =
+      Vector3f(c * p_acc - s * r_acc, s * p_acc + c * r_acc, -g);
+
+  // get desired body z axis
+  Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
+
+  float b1dx = cosf(_manual_yaw_setpoint);
+  float b1dy = sinf(_manual_yaw_setpoint);
+  float b1dz = 0.0f;
+
+  const Vector3f b1d(b1dx, b1dy, b1dz);
+  const Vector3f b2d = b3d.cross(b1d).unit();
+  const Vector3f b1d_new = b2d.cross(b3d).unit();
+
+  // construct desired rot matrix
+  Dcm<float> rotDes;
+  for (size_t i = 0; i < 3; i++) {
+    rotDes(i, 0) = b1d_new(i);
+    rotDes(i, 1) = b2d(i);
+    rotDes(i, 2) = b3d(i);
+  }
+
+  // convert to quaternion
+  _xi_cmd = Quatf(rotDes);
 }
 
 void IndiControl::compute_cmd_ang_accel() {
@@ -342,39 +402,32 @@ void IndiControl::compute_cmd_pwm() {
   publish_pwm_cmd();
 }
 
-void IndiControl::publish_setpoints(const float acc, const Vector3f ang_accel) {
+bool IndiControl::check_flight_mode() {
 
-  vehicle_thrust_setpoint_s msgT;
-  msgT.timestamp = hrt_absolute_time();
-  msgT.timestamp_sample = _now;
-  msgT.xyz[0] = 0.0f;
-  msgT.xyz[1] = 0.0f;
-  msgT.xyz[2] =
-      (_armed) ? math::constrain((acc / 9.81f * 0.75f), -1.0f, 1.0f) : 0.0f;
-  _vehicle_thrust_setpoint_pub.publish(msgT);
-
-  vehicle_torque_setpoint_s msgM{};
-  msgM.timestamp = hrt_absolute_time();
-  msgM.timestamp_sample = _now;
-  for (size_t i = 0; i < 3; i++) {
-    msgM.xyz[i] = math::constrain(ang_accel(i) / 35.0f, -1.0f, 1.0f);
-  }
-  _vehicle_torque_setpoint_pub.publish(msgM);
-
-  if (_armed) {
-    // P X4_INFO("PUBLISHING: %f, %f, %f, %f :: %f, %f, %f, %f", (double)acc,
-    // (double)ang_accel(0), (double)ang_accel(1), (double)ang_accel(2),
-    // (double)msgT.xyz[2],
-    // (double)msgM.xyz[0],(double)msgM.xyz[1],(double)msgM.xyz[2]);
+  if (_vehicle_control_mode.flag_control_manual_enabled &&
+      !_vehicle_control_mode.flag_control_altitude_enabled &&
+      !_vehicle_control_mode.flag_control_velocity_enabled &&
+      !_vehicle_control_mode.flag_control_position_enabled) {
+    // is in stabilized mode
+    return true;
+  } else {
+    return false;
   }
 }
 
 void IndiControl::compute_cmd() {
 
-  // run the main controller
-  compute_cmd_accel();
-  compute_cmd_thrust();
-  compute_cmd_quaternion();
+  bool mode_manual = check_flight_mode();
+
+  if (!mode_manual) {
+    // run the main controller
+    compute_cmd_accel();
+    compute_cmd_thrust();
+    compute_cmd_quaternion();
+  } else {
+    compute_cmd_thrust_manual();
+    compute_cmd_quaternion_manual();
+  }
   compute_cmd_ang_accel();
   compute_cmd_torque();
   compute_cmd_pwm();

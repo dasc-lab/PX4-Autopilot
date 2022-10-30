@@ -37,6 +37,20 @@ void IndiControl::cb_vehicle_status() {
   }
 }
 
+void IndiControl::cb_vehicle_control_mode() {
+
+  if (_vehicle_control_mode_sub.updated()) {
+    _vehicle_control_mode_sub.copy(&_vehicle_control_mode);
+  }
+}
+
+void IndiControl::cb_manual_control_setpoint() {
+
+  if (_manual_control_setpoint_sub.updated()) {
+    _manual_control_setpoint_sub.copy(&_manual_control_setpoint);
+  }
+}
+
 void IndiControl::cb_vehicle_local_position() {
   if (_vehicle_local_position_sub.updated()) {
     _vehicle_local_position_sub.copy(&_local_position);
