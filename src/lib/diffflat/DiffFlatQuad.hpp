@@ -7,31 +7,37 @@ namespace diffflat
 
 using namespace matrix;
 
-template<typename Type>
-void flat_state_to_quad_state(Vector<Type, 3>& b1d, Vector<Type, 3>& ang_vel, Vector<Type, 3>& ang_acc, 
-  const Vector<Type, 3> acc, 
-  const Vector<Type, 3> jerk,
-  const Vector<Type, 3> snap, 
+float sq(float x) {
+	return x*x;
+}
+
+float cube(float x) {
+	return x*x*x;
+}
+
+void flat_state_to_quad_state(Vector3f& b1d, Vector3f& ang_vel, Vector3f& ang_acc, 
+  const Vector3f acc, 
+  const Vector3f jerk,
+  const Vector3f snap, 
   float yaw, 
   float yaw_rate, 
   float yaw_acc, 
-  float g
+  float g=9.81
 ) {
     
-    using Vector3 = Vector<Type, 3>;
-    using Vector4 = Vector<Type, 4>;
-    using SqMatrix3 = SquareMatrix<Type, 3>;
-    using SqMatrix4 = SquareMatrix<Type, 4>;
+    
+    using SqMatrix3 = SquareMatrix<float, 3>;
+    using SqMatrix4 = SquareMatrix<float, 4>;
 
-    const Vector3 force(acc(0), acc(1), acc(2) + g);
+    Vector3f force = acc + Vector3f(0, 0, g);
 
-    const Vector3 zb = force.unit();
-    const Vector3 xc(std::cos(yaw), std::sin(yaw), 0);
-    const Vector3 yb = zb.cross(xc).unit()
-    const Vector3 xb = yb.cross(zb).unit()
+     Vector3f zb = force.unit();
+     Vector3f xc(std::cos(yaw), std::sin(yaw), 0.0);
+     Vector3f yb = zb.cross(xc).unit();
+     Vector3f xb = yb.cross(zb).unit();
 
     // construct desired rotation matrix
-    Dcm<Type> R;
+    Dcm<float> R;
     for (size_t i=0; i < 3; i++){
       R(i, 0) = xb(i);
       R(i, 1) = yb(i);
@@ -45,24 +51,27 @@ void flat_state_to_quad_state(Vector<Type, 3>& b1d, Vector<Type, 3>& ang_vel, Ve
     }
 
     // construct τ
-    const Type tau = force.norm()
+     float tau = force.norm();
 
     // construct S matrix
-    const Type bx1 = R[0, 0]
-    const Type bx2 = R[1, 0]
-    const Type bx3 = R[2, 0]
-    const Type by1 = R[0, 1]
-    const Type by2 = R[1, 1]
-    const Type by3 = R[2, 1]
-    const Type bz1 = R[0, 2]
-    const Type bz2 = R[1, 2]
-    const Type bz3 = R[2, 2]
+    const float bx1 = R(0, 0);
+    const float bx2 = R(1, 0);
+    //const float bx3 = R(2, 0);
+    const float by1 = R(0, 1);
+    const float by2 = R(1, 1);
+    //const float by3 = R(2, 1);
+    const float bz1 = R(0, 2);
+    const float bz2 = R(1, 2);
+    //const float bz3 = R(2, 2);
+    
+    const float bx12 = bx1*bx1;
+    const float bx22 = bx2*bx2;
 
     // S vector
-    Vector3 S ( 0, 
-        (bx2 * bz1 - bx1 * bz2) / (bx1^2 + bx2^2), 
-        (-bx2 * by1 + bx1 * by2) / (bx1^2 + bx2^2)
-    )
+    Vector3f S ( 0, 
+        (bx2 * bz1 - bx1 * bz2) / (bx12 + bx22), 
+        (-bx2 * by1 + bx1 * by2) / (bx12 + bx22)
+    );
 
     // solve for Ω, τdot
 
@@ -72,9 +81,9 @@ void flat_state_to_quad_state(Vector<Type, 3>& b1d, Vector<Type, 3>& ang_vel, Ve
     SqMatrix4 M;
 
     // M[1:3, 1:3] = tau * R * hatizT;
-    const Vector3 iz (0, 0, 1);
-    const SqMatrix3 hatizT = iz.hat().T();
-    const SqMatrix3 M11 = tau * R * hatizT;
+     Vector3f iz (0, 0, 1);
+     SqMatrix3 hatizT = iz.hat().T();
+     SqMatrix3 M11 = tau * R * hatizT;
     for (size_t i=0; i < 3; i++){
         for (size_t j=0; j < 3; j++) {
             M(i,j) = M11(i,j);
@@ -95,33 +104,34 @@ void flat_state_to_quad_state(Vector<Type, 3>& b1d, Vector<Type, 3>& ang_vel, Ve
     SqMatrix4 invM = M.I();
     
     //Ωτd = invM * [SVector{3}(j); ψd]
-    Vector4 omega_taudot = invM * Vector4f(jerk(0), jerk(1), jerk(2), yaw_rate);
+    Vector4f omega_taudot = invM * Vector4f(jerk(0), jerk(1), jerk(2), yaw_rate);
 
     // update omega
     for (size_t i=0; i<3;i++){
       ang_vel(i) = omega_taudot(i);
     }
    
-    const Type tau_dot = omega_taudot(3);
+    const float tau_dot = omega_taudot(3);
 
     // construct Sdot matrix
-    const Type w1 = ang_vel(0);
-    const Type w2 = ang_vel(1);
-    const Type w3 = ang_vel(2);
+    const float w1 = ang_vel(0);
+    const float w2 = ang_vel(1);
+    const float w3 = ang_vel(2);
+    
 
-    Vector3 Sd (
+    Vector3f Sd (
         0,
-        (bx1 * w1) / (bx1^2 + bx2^2) +
-        (bx2 * w2) / (bx1^2 + bx2^2) +
-        ((bx1^2 * bz1 - bx2^2 * bz1 + 2 * bx1 * bx2 * bz2) * w3) / (bx1^2 + bx2^2)^2,
-        ((bx1^2 * bx2 + bx2^3 - bx1^2 * by1 + bx2^2 * by1 - 2 * bx1 * bx2 * by2) * w3) / (bx1^2 + bx2^2)^2
-    )
+        (bx1 * w1) / (bx12 + bx22) +
+        (bx2 * w2) / (bx12 + bx22) +
+        ((bx12 * bz1 - bx22 * bz1 + 2 * bx1 * bx2 * bz2) * w3) / sq(bx12 + bx22),
+        ((bx12 * bx2 + cube(bx2) - bx12 * by1 + bx22 * by1 - 2 * bx1 * bx2 * by2) * w3) / sq(bx12 + bx22)
+    );
 
     // solve for α, τdd
-    const Vector3 B1 = R * (2 * tau_dot * hatizT + tau * (ang_vel.hat()) * hatizT) * ang_vel
-    const Type  B2 = Sd.dot(ang_vel)
-    const Vector4 sb (s(0) - B1(0), s(1) - B1(1), s(2) - B1(2), yaw_acc - B2);
-    const Vector4 alpha_taudotdot = invM * sb
+    const Vector3f B1 = R * (2 * tau_dot * hatizT + tau * (ang_vel.hat()) * hatizT) * ang_vel;
+    const float  B2 = Sd.dot(ang_vel);
+    const Vector4f sb (snap(0) - B1(0), snap(1) - B1(1), snap(2) - B1(2), yaw_acc - B2);
+    const Vector4f alpha_taudotdot = invM * sb;
 
     for (size_t i=0; i<3;i++){
       ang_acc(i) = alpha_taudotdot(i);
@@ -130,6 +140,7 @@ void flat_state_to_quad_state(Vector<Type, 3>& b1d, Vector<Type, 3>& ang_vel, Ve
     return;
 
 }
+
 
 
 

@@ -34,6 +34,13 @@ public:
 	{
 	}
 
+	void copy_in(const Type data_[M]) {
+		for (size_t i=0; i<M; i++){
+			Vector &self(*this);
+			self(i) = data_[i];
+		}
+	}
+
 	template<size_t P, size_t Q>
 	Vector(const Slice<Type, M, 1, P, Q> &slice_in) :
 		Matrix<Type, M, 1>(slice_in)
@@ -148,6 +155,38 @@ public:
 
 		return r;
 	}
+
+  Vector signedsqrt() const
+  {
+    const Vector &a(*this);
+    Vector r;
+    
+    for (size_t i = 0; i < M; i++) {
+      Type v = a(i);
+      r(i) = Type (v >= 0 ? std::sqrt(v) : -std::sqrt(-v)) ;
+    }
+
+    return r;
+  }
+
+  bool has_nan() const
+  {
+		const Vector &a(*this);
+
+		for (size_t i=0; i < M; i++){
+			if (std::isnan(a(i))){
+				return true;
+			}
+		}
+		return false;
+	}
+
+	Vector zero_if_nan() const
+	{
+		return 	has_nan() ? Vector() : *this;
+	}
+
+
 };
 
 } // namespace matrix

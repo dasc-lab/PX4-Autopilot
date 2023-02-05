@@ -36,3 +36,8 @@ set MIXER quad_x
 set PWM_OUT 1234
 
 set PWM_AUX_OUT 1234
+
+#
+# Prevent it from automatically disarming if it thinks the quad hasnt taken off
+# 
+param set-default COM_DISARM_PRFLT -1

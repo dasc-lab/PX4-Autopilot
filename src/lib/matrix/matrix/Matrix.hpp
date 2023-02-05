@@ -593,6 +593,22 @@ public:
 
 		return result;
 	}
+	
+	Vector<Type, M> vee()
+	{
+
+		static_assert(M == 3, "vee only for 3x3 matrices");
+		static_assert(M == N, "vee only for 3x3 matrices");
+
+		Vector<Type, 3> res;
+		const Matrix<Type, M, N> &self = *this;
+	
+		res(0) = Type(0.5) * (self(2,1) - self(1,2));
+		res(1) = Type(0.5) * (self(0,2) - self(2,0));
+		res(2) = Type(0.5) * (self(1,0) - self(0,1));
+	
+		return res;
+	}
 };
 
 template<typename Type, size_t M, size_t N>
