@@ -16,17 +16,18 @@ GeometricControl::GeometricControl()
       _loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME ": cycle")) {
   
   _J.setIdentity();
+  _R.setIdentity();
   parameters_updated();
   
-  R_ENU_TO_FRD(0,0) = 0;
-  R_ENU_TO_FRD(1,0) = 1;
-  R_ENU_TO_FRD(2,0) = 0;
-  R_ENU_TO_FRD(0,1) = 1;
-  R_ENU_TO_FRD(1,1) = 0;
-  R_ENU_TO_FRD(2,1) = 0;
-  R_ENU_TO_FRD(0,2) = 0;
-  R_ENU_TO_FRD(1,2) = 0;
-  R_ENU_TO_FRD(2,2) =-1;
+  R_ENU_TO_FRD(0,0) = 0.0f;
+  R_ENU_TO_FRD(1,0) = 1.0f;
+  R_ENU_TO_FRD(2,0) = 0.0f;
+  R_ENU_TO_FRD(0,1) = 1.0f;
+  R_ENU_TO_FRD(1,1) = 0.0f;
+  R_ENU_TO_FRD(2,1) = 0.0f;
+  R_ENU_TO_FRD(0,2) = 0.0f;
+  R_ENU_TO_FRD(1,2) = 0.0f;
+  R_ENU_TO_FRD(2,2) =-1.0f;
 
 }
 
@@ -103,23 +104,43 @@ void GeometricControl::update_state() {
   if (_vehicle_attitude_sub.updated()) {
 	  vehicle_attitude_s vehicle_attitude{};
 	  _vehicle_attitude_sub.copy(&vehicle_attitude);
-	  Dcm<float> R_FRD (vehicle_attitude.q);
+	  Dcmf R_FRD (Quaternionf(vehicle_attitude.q));
 	  // now convert to ENU
-	  _R = R_FRD * R_ENU_TO_FRD;
+	  _R = R_ENU_TO_FRD.T() * R_FRD * R_ENU_TO_FRD;
+
+	  Quaternion<float> q_enu(_R);
+	  //PX4_WARN("NEW ROTATION: %.3f, %.3f, %.3f, %.3f", (double)vehicle_attitude.q[0], (double)vehicle_attitude.q[1],(double)vehicle_attitude.q[2],(double)vehicle_attitude.q[3]); 
+	  PX4_WARN("NEW ROTATION: %.3f, %.3f, %.3f, %.3f", (double)q_enu(0), (double)q_enu(1),(double)q_enu(2),(double)q_enu(3)); 
   }
 
 }
 
 void GeometricControl::update_setpoint() {
 
+		diffflat_setpoint_s sp;
 	if (_diffflat_setpoint_sub.updated()){
 
-		diffflat_setpoint_s sp;
 		_diffflat_setpoint_sub.update(&sp);
 
 		_xd.copy_in(sp.pos);
 		_vd.copy_in(sp.vel);
 		_ad.copy_in(sp.acc);
+
+	}
+		// HACK
+		_xd(0) = 0.0;
+		_xd(1) = 0.0;
+		_xd(2) = 1.0;
+		for (size_t i=0; i<3; i++){
+			_vd(i) = 0;
+			_ad(i) = 0;
+			sp.acc[i] = 0;
+			sp.jerk[i] = 0;
+			sp.snap[i] = 0.0;
+			sp.yaw = 0.0;
+			sp.yaw_rate = 0;
+			sp.yaw_acc = 0;
+		}
 
 		diffflat::flat_state_to_quad_state(_b1d, _Omegad, _alphad, 
 				Vector3f(sp.acc),
@@ -127,7 +148,6 @@ void GeometricControl::update_setpoint() {
 			       	Vector3f(sp.snap),
 			       	sp.yaw, sp.yaw_rate, sp.yaw_acc);
 
-	}
 
 }
 
@@ -180,7 +200,10 @@ void GeometricControl::Run() {
     const Vector3f ex = (_x - _xd).zero_if_nan();
     const Vector3f ev = (_v - _vd).zero_if_nan();
 
-    const Vector3f force = -_kx * ex - _kv * ev + _mass * _g * e3 + _mass * _ad.zero_if_nan();
+
+    //PX4_INFO("ex: %f, %f, %f", (double)ex(0), (double)ex(1), (double)ex(2));
+
+    const Vector3f force = _mass * (-_kx * ex - _kv * ev) + _mass * _g * e3 + _mass * _ad.zero_if_nan();
     const Vector3f b3 = force.unit();
     const Vector3f b2 = b3.cross(_b1d).unit();
     const Vector3f b1 = b2.cross(b3).unit();
@@ -195,11 +218,15 @@ void GeometricControl::Run() {
     const Vector3f eR = Vector3f(0.5f * (Rd.T() * _R - _R.T() * Rd).vee() ).zero_if_nan();
     const Vector3f eOmega = (_Omega - _R.T() * Rd * _Omegad).zero_if_nan();
 
-    float f = force.dot(_R * e3);
+    float f = force.dot(Vector3f(_R * e3));
+
+    PX4_INFO("Re3: %.3f, %.3f, %.3f", (double)(Vector3f(_R*e3)(0)), (double)(Vector3f(_R*e3)(1)), (double)(Vector3f(_R*e3)(2)));
+    //PX4_INFO("f: %.3f, force: %.3f, %.3f, %.3f", (double)f, (double)force(0), (double)force(1), (double)force(2));
+    
     const Vector3f M = -_kR*eR - _kOmega * eOmega + _Omega.cross(_J * _Omega) - _J * ( _Omega.hat() * _R.T() * Rd * _Omegad - _R.T() * Rd * _alphad);
 
     // convert f, M to pwm
-    Vector4f pwm_cmds = fM_to_pwm(f, M);
+    Vector4f pwm_cmds = fM_to_pwm(f, 0.0f*M); //TODO:REMOVE
     
     // send pwm commands to motors
     publishPWM(pwm_cmds, now);
@@ -212,9 +239,12 @@ void GeometricControl::Run() {
 
 Vector4f GeometricControl::fM_to_pwm(float f, const Vector3f M){
 
+
     // determine omega^2
     const Vector4f fM ( f, M(0), M(1), M(2) );
     Vector4f omegas = Vector4f(_invG * fM).signedsqrt();
+	
+    PX4_INFO("Thrust: %.3f, omegas: %.3f, %.3f, %.3f, %.3f", (double)f, (double)omegas(0), (double)omegas(1), (double)omegas(2), (double)omegas(3));
 
     // assume RPM is linear with PWM command
     Vector4f pwms = omegas / _omega_max;

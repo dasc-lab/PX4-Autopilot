@@ -72,7 +72,7 @@ PARAM_DEFINE_FLOAT(GEO_KOMEGA, 0.15f);
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_M, 1.0f);
+PARAM_DEFINE_FLOAT(GEO_M, 1.5f);
 
 
 /**
@@ -86,7 +86,7 @@ PARAM_DEFINE_FLOAT(GEO_M, 1.0f);
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_JXX, 0.0049f);
+PARAM_DEFINE_FLOAT(GEO_JXX, 0.03f);
 
 
 /**
@@ -100,7 +100,7 @@ PARAM_DEFINE_FLOAT(GEO_JXX, 0.0049f);
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_JYY, 0.0049f);
+PARAM_DEFINE_FLOAT(GEO_JYY, 0.03f);
 
 
 /**
@@ -114,7 +114,7 @@ PARAM_DEFINE_FLOAT(GEO_JYY, 0.0049f);
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_JZZ, 0.0069f);
+PARAM_DEFINE_FLOAT(GEO_JZZ, 0.06f);
 
 // todo: add other moments of inertia
 
@@ -130,8 +130,9 @@ PARAM_DEFINE_FLOAT(GEO_JZZ, 0.0069f);
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_K_F, 0.0069f); // TODO: UPDATE
+PARAM_DEFINE_FLOAT(GEO_K_F, 0.02f);
 
+// 1.91e-6 N / (rad/s)^2 = 1.91e-6 * 1e6 /(9.54^2) N / kRPM^2 = 0.02  N / kRPM^2
 
 /**
  * Motor Torque Constant (Nm / kRPM^2)
@@ -144,7 +145,8 @@ PARAM_DEFINE_FLOAT(GEO_K_F, 0.0069f); // TODO: UPDATE
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_K_MU, 0.0069f); // TODO: UPDATE
+PARAM_DEFINE_FLOAT(GEO_K_MU, 0.00296f); // TODO: UPDATE
+// 2.7e-7 Nm / (rad/s)^2 = 2.7e-7 * 1e6 / (9.54)^2 Nm / kRPM^2 = 0.00296 Nm / kRPM^2
 
 /**
  * Max Motor Speed (kRPM)
@@ -157,7 +159,7 @@ PARAM_DEFINE_FLOAT(GEO_K_MU, 0.0069f); // TODO: UPDATE
  * @increment 0.01
  * @group Geometric Control
  */
-PARAM_DEFINE_FLOAT(GEO_OMEGA_MAX, 20.3f); // TODO: UPDATE
+PARAM_DEFINE_FLOAT(GEO_OMEGA_MAX, 20.0f); // TODO: UPDATE
 
 
 /**
