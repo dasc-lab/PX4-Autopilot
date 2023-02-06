@@ -570,5 +570,7 @@ SquareMatrix <Type, M> choleskyInv(const SquareMatrix<Type, M> &A)
 
 using Matrix3f = SquareMatrix<float, 3>;
 using Matrix3d = SquareMatrix<double, 3>;
+using Matrix4f = SquareMatrix<float, 4>;
+using Matrix4d = SquareMatrix<double, 4>;
 
 } // namespace matrix

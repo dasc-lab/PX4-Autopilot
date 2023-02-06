@@ -63,6 +63,7 @@ set(msg_files
 	control_allocator_status.msg
 	cpuload.msg
 	differential_pressure.msg
+	diffflat_setpoint.msg
 	distance_sensor.msg
 	ekf2_timestamps.msg
 	estimator_gps_status.msg

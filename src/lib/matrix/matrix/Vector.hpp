@@ -148,6 +148,36 @@ public:
 
 		return r;
 	}
+	Vector signed_sqrt() const
+	{
+		const Vector &a(*this);
+		Vector r;
+
+		for (size_t i = 0; i < M; i++) {
+			Type v = a(i);
+			r(i) = (v < 0) ? Type(-std::sqrt(-v)) : Type(std::sqrt(v));
+		}
+
+		return r;
+	}
+
+	bool has_nan() const
+	{
+		const Vector &a(*this);
+
+		for (size_t i=0; i < M; i++){
+			if (std::isnan(a(i))){
+				return true;
+			}
+		}
+		return false;
+	}
+
+	Vector zero_if_nan() const
+	{
+		return 	has_nan() ? Vector() : *this;
+
+	}
 };
 
 } // namespace matrix

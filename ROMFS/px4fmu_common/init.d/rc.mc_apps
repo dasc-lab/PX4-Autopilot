@@ -48,6 +48,11 @@ fi
 #                        End Estimator Group Selection                        #
 ###############################################################################
 
+#
+# start indi controller
+#
+indi_control start
+
 if param compare SYS_CTRL_ALLOC 1
 then
 	#
@@ -56,29 +61,29 @@ then
 	control_allocator start
 fi
 
-#
-# Start Multicopter Rate Controller.
-#
-mc_rate_control start
-
-#
-# Start Multicopter Attitude Controller.
-#
-mc_att_control start
-
-if param greater -s MC_AT_EN 0
-then
-	mc_autotune_attitude_control start
-fi
-
-#
-# Start Multicopter Position Controller.
-#
-mc_hover_thrust_estimator start
-flight_mode_manager start
-mc_pos_control start
-
-#
-# Start Multicopter Land Detector.
-#
-land_detector start multicopter
+# #
+# # Start Multicopter Rate Controller.
+# #
+# mc_rate_control start
+# 
+# #
+# # Start Multicopter Attitude Controller.
+# #
+# mc_att_control start
+# 
+# if param greater -s MC_AT_EN 0
+# then
+# 	mc_autotune_attitude_control start
+# fi
+# 
+# #
+# # Start Multicopter Position Controller.
+# #
+# mc_hover_thrust_estimator start
+# flight_mode_manager start
+# mc_pos_control start
+# 
+# #
+# # Start Multicopter Land Detector.
+# #
+# land_detector start multicopter

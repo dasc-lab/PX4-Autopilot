@@ -160,6 +160,10 @@ public:
 		_a2 = 0.f;
 	}
 
+	bool is_disabled(){
+		return _sample_freq <= 0.0f;
+	}
+
 protected:
 	T _delay_element_1{}; // buffered sample -1
 	T _delay_element_2{}; // buffered sample -2

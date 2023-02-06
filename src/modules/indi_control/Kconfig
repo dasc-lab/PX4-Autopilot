@@ -1,0 +1,5 @@
+menuconfig MODULES_INDI_CONTROL
+  bool "indi_control"
+  default n
+  ---help---
+    Enable Indi Control
