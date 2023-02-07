@@ -6,20 +6,20 @@
 
 void IndiControl::publish_thrust_cmd() {
 
-  vehicle_thrust_setpoint_s msg;
-  msg.timestamp = hrt_absolute_time();
-  msg.timestamp_sample = _now;
-  msg.xyz[0] = 0.0;
-  msg.xyz[1] = 0.0;
-  msg.xyz[2] =
-      math::constrain(_thrust_cmd * 1.5f * _thrust_constant, -1.0f, 1.0f);
+  // vehicle_thrust_setpoint_s msg;
+  // msg.timestamp = hrt_absolute_time();
+  // msg.timestamp_sample = _now;
+  // msg.xyz[0] = 0.0;
+  // msg.xyz[1] = 0.0;
+  // msg.xyz[2] =
+  //     math::constrain(_thrust_cmd * 1.5f * _thrust_constant, -1.0f, 1.0f);
 
-  if (_armed) {
-    // PX4_INFO("THRUST: %f, MSG: %f, K: %f", (double)_thrust_cmd,
-    // (double)msg.xyz[2], (double)_thrust_constant);
-  }
+  // if (_armed) {
+  //   // PX4_INFO("THRUST: %f, MSG: %f, K: %f", (double)_thrust_cmd,
+  //   // (double)msg.xyz[2], (double)_thrust_constant);
+  // }
 
-  _vehicle_thrust_setpoint_pub.publish(msg);
+  // _vehicle_thrust_setpoint_pub.publish(msg);
 }
 
 void IndiControl::publish_xi_cmd() {
@@ -46,28 +46,19 @@ void IndiControl::publish_torque_cmd() {
 
 void IndiControl::publish_pwm_cmd() {
 
-  // directly publish the cmd to actuator_motors
-  actuator_motors_s msg;
-  msg.timestamp = hrt_absolute_time();
+  // publish directly the esc commands, scaled to [-1, 1]
+  // MUST USE direct passthrough mixer!! tested using quad_raw.main.mix on Feb 6 2023
+
+  actuator_controls_s msg;
+  msg.timestamp = hrt_absolute_time(); 
   msg.timestamp_sample = _now;
+  msg.control[0] = _pwm_cmd(0);
+  msg.control[1] = _pwm_cmd(1);
+  msg.control[2] = _pwm_cmd(2);
+  msg.control[3] = _pwm_cmd(3);
 
-  msg.reversible_flags = 255; // _param_r_rev.get(); // TODO check!
+  _actuator_controls_pub.publish(msg);
 
-  for (size_t i = 0; i < 4; i++) {
-    msg.control[i] = _pwm_cmd(i);
-  }
-
-  _actuator_motors_pub.publish(msg);
-
-  actuator_controls_s msg2;
-  msg2.timestamp = msg.timestamp;
-  msg2.timestamp_sample = _now;
-  msg2.control[actuator_controls_s::INDEX_ROLL] = _pwm_cmd(0);
-  msg2.control[actuator_controls_s::INDEX_PITCH] = _pwm_cmd(1);
-  msg2.control[actuator_controls_s::INDEX_YAW] = _pwm_cmd(2);
-  msg2.control[actuator_controls_s::INDEX_THROTTLE] = _pwm_cmd(3);
-
-  _actuator_controls_pub.publish(msg2);
 }
 
 void IndiControl::publish_attitude_setpoint(const Dcm<float> rotDes) {

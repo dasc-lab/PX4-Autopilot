@@ -19,7 +19,6 @@
 #include <uORB/Subscription.hpp>
 #include <uORB/SubscriptionCallback.hpp>
 #include <uORB/topics/actuator_controls.h>
-#include <uORB/topics/actuator_motors.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/sensor_accel.h>
@@ -170,8 +169,6 @@ private:
       ORB_ID(vehicle_torque_setpoint)};
   uORB::Publication<vehicle_thrust_setpoint_s> _vehicle_thrust_setpoint_pub{
       ORB_ID(vehicle_thrust_setpoint)};
-  uORB::Publication<actuator_motors_s> _actuator_motors_pub{
-      ORB_ID(actuator_motors)};
   uORB::Publication<actuator_controls_s> _actuator_controls_pub{
       ORB_ID(actuator_controls_0)};
 

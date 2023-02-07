@@ -53,13 +53,13 @@ fi
 #
 indi_control start
 
-if param compare SYS_CTRL_ALLOC 1
-then
-	#
-	# Start Control Allocator
-	#
-	control_allocator start
-fi
+# if param compare SYS_CTRL_ALLOC 1
+# then
+# 	#
+# 	# Start Control Allocator
+# 	#
+# 	control_allocator start
+# fi
 
 # #
 # # Start Multicopter Rate Controller.
