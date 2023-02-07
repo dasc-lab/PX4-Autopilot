@@ -131,14 +131,11 @@ void IndiControl::compute_cmd_accel() {
   Vector3f x(_local_position.x, _local_position.y, _local_position.z);
   Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
 
-  Vector3f x_ref(_setpoint.pos);
-  Vector3f v_ref(_setpoint.vel);
-  Vector3f a_ref(_setpoint.acc);
-
   // acceleration command (EZRA, EQ:17)
-  _a_cmd = a_ref.zero_if_nan() + k_pos.emult((x_ref - x).zero_if_nan()) +
-           k_vel.emult((v_ref - v).zero_if_nan()) +
-           k_acc.emult((a_ref - _a_filt).zero_if_nan());
+  _a_cmd = a_ref.zero_if_nan()
+	  + k_pos.emult((_pos_sp - x).zero_if_nan())
+	  + k_vel.emult((_vel_sp - v).zero_if_nan()) 
+	  + k_acc.emult((_acc_sp - _a_filt).zero_if_nan());
 }
 
 void IndiControl::compute_cmd_thrust() {
@@ -174,27 +171,20 @@ void IndiControl::compute_cmd_thrust_manual() {
 void IndiControl::compute_cmd_quaternion() {
   bool use_geometric = true;
   if (use_geometric) {
-    const float g = 9.81;
+    const float g = 9.81f;
     Vector3f _z(0, 0, 1);
 
     Vector3f acc = _a_cmd - g * _z;
 
     Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
 
-    float yaw_ref = _setpoint.yaw;
-
-    float b1dx = cosf(yaw_ref);
-    float b1dy = sinf(yaw_ref);
-    float b1dz = 0.0f;
-
-    const Vector3f b1d(b1dx, b1dy, b1dz);
-    const Vector3f b2d = b3d.cross(b1d).unit();
-    const Vector3f b1d_new = b2d.cross(b3d).unit();
+    const Vector3f b2d = b3d.cross(_b1d).unit();
+    const Vector3f b1d = b2d.cross(b3d).unit();
 
     // construct desired rot matrix
     Dcm<float> rotDes;
     for (size_t i = 0; i < 3; i++) {
-      rotDes(i, 0) = b1d_new(i);
+      rotDes(i, 0) = b1d(i);
       rotDes(i, 1) = b2d(i);
       rotDes(i, 2) = b3d(i);
     }
@@ -300,8 +290,7 @@ void IndiControl::compute_cmd_ang_accel() {
 
     // error in angular rate
     Vector3f ang_rate(_ang_vel);
-    Vector3f ang_rate_sp(0, 0, 0);
-    Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * ang_rate_sp;
+    Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * _ang_vel_sp;
 
     if (false) {
       // desired moments
@@ -458,27 +447,27 @@ void IndiControl::compute_cmd() {
 }
 
 void IndiControl::construct_setpoint() {
-  float time_since_start_s = (float)(_now - _start) * 1.0e-6f;
-  float seconds_per_rev = 5.0f;
+  // float time_since_start_s = (float)(_now - _start) * 1.0e-6f;
+  // float seconds_per_rev = 5.0f;
 
-  float omega = 2.0f * (float)M_PI / seconds_per_rev;
-  float phase = omega * time_since_start_s;
+  // float omega = 2.0f * (float)M_PI / seconds_per_rev;
+  // float phase = omega * time_since_start_s;
 
-  float amplitude = 0.5f;
+  // float amplitude = 0.5f;
 
-  _setpoint.pos[0] = amplitude * cos(phase);
-  _setpoint.pos[1] = amplitude * sin(phase);
-  _setpoint.pos[2] = -1.25f;
+  // _setpoint.pos[0] = amplitude * cos(phase);
+  // _setpoint.pos[1] = amplitude * sin(phase);
+  // _setpoint.pos[2] = -1.25f;
 
-  _setpoint.vel[0] = -amplitude * omega * sin(phase);
-  _setpoint.vel[1] = amplitude * omega * cos(phase);
-  _setpoint.vel[2] = 0.0f;
+  // _setpoint.vel[0] = -amplitude * omega * sin(phase);
+  // _setpoint.vel[1] = amplitude * omega * cos(phase);
+  // _setpoint.vel[2] = 0.0f;
 
-  _setpoint.acc[0] = -amplitude * omega * omega * cos(phase);
-  _setpoint.acc[1] = -amplitude * omega * omega * sin(phase);
-  _setpoint.acc[2] = 0.0f;
+  // _setpoint.acc[0] = -amplitude * omega * omega * cos(phase);
+  // _setpoint.acc[1] = -amplitude * omega * omega * sin(phase);
+  // _setpoint.acc[2] = 0.0f;
 
-  _setpoint.yaw = -0.0f * 0.5f * phase;
+  // _setpoint.yaw = -0.0f * 0.5f * phase;
 }
 
 void IndiControl::Run() {

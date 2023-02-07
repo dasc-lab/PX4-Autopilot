@@ -14,6 +14,7 @@
 #include <lib/mathlib/math/filter/LowPassFilter2p.hpp>
 #include <lib/matrix/matrix/math.hpp>
 #include <lib/perf/perf_counter.h>
+#include <lib/diffflat/DiffFlatQuad.hpp>
 
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
@@ -161,7 +162,8 @@ private:
   vehicle_local_position_s _local_position;
   vehicle_attitude_s _attitude;
   vehicle_angular_velocity_s _angular_velocity;
-  diffflat_setpoint_s _setpoint;
+  diffflat_setpoint_s _flat_setpoint;
+  Vector3f _pos_sp, _vel_sp, _acc_sp, _b1d_sp, _ang_vel_sp, _ang_acc_sp; // non-flat setpoints
   vehicle_control_mode_s _vehicle_control_mode;
   manual_control_setpoint_s _manual_control_setpoint;
   // Publications

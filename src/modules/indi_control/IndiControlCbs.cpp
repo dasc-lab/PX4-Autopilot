@@ -106,6 +106,27 @@ void IndiControl::cb_vehicle_angular_acceleration() {
 
 void IndiControl::cb_diffflat_setpoint() {
   if (_diffflat_setpoint_sub.updated()) {
-     _diffflat_setpoint_sub.copy(&_setpoint);
+     _diffflat_setpoint_sub.copy(&_flat_setpoint);
   }
+
+  // convert to a trackable setpoint
+  diffflat::flat_state_ENU_to_quad_state_FRD(
+		  _pos_sp, 
+		  _vel_sp,
+		  _acc_sp,
+		  _b1d_sp,
+		  _ang_vel_sp,
+		  _ang_acc_sp,
+		  Vector3f(_flat_setpoint.pos),
+		  Vector3f(_flat_setpoint.vel),
+		  Vector3f(_flat_setpoint.acc),
+		  Vector3f(_flat_setpoint.jerk),
+		  Vector3f(_flat_setpoint.snap),
+		  Vector3f(_flat_setpoint.yaw),
+		  Vector3f(_flat_setpoint.yaw_rate),
+		  Vector3f(_flat_setpoint.yaw_acc)
+  )
+
+
 }
+
