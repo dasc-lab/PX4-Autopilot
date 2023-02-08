@@ -1,4 +1,6 @@
 #pragma once
+#ifndef _DIFFFLATQUAD
+#define _DIFFFLATQUAD
 
 #include <matrix/math.hpp>
 
@@ -15,57 +17,7 @@ float cube(float x) {
 	return x*x*x;
 }
 
-const Matrix3f R_ENU_TO_FRD (Quaternionf(0f, std::sqrt(2.0f)/2.0f, std::sqrt(2.0f)/2.0f, 0.0f) );
-
-void flat_state_ENU_to_quad_state_FRD(
-		Vector3f& pos_FRD, 
-		Vector3f& vel_FRD, 
-		Vector3f& acc_FRD, 
-		Vector3f& b1d_FRD, 
-		Vector3f& ang_vel_FRD, 
-		Vector3f& ang_acc_FRD, 
-  const Vector3f pos_ENU, 
-  const Vector3f vel_ENU, 
-  const Vector3f acc_ENU, 
-  const Vector3f jerk_ENU,
-  const Vector3f snap_ENU, 
-  float yaw, 
-  float yaw_rate, 
-  float yaw_acc, 
-  float g=9.81f
-) {
-
-	const Vector3f _pos_FRD = R_ENU_TO_FRD * pos_ENU;
-	const Vector3f _vel_FRD = R_ENU_TO_FRD * vel_ENU;
-	const Vector3f _acc_FRD = R_ENU_TO_FRD * acc_ENU;
-
-	for (size_t i=0; i < 3; i++){
-		pos_FRD(i) = _pos_FRD(i);
-		vel_FRD(i) = _vel_FRD(i);
-		acc_FRD(i) = _acc_FRD(i);
-	}
-
-	Vector3f b1d_ENU;
-	Vector3f ang_vel_ENU;
-	Vector3f ang_acc_ENU;
-
-	// RUN flat state conversion within ENU
-	flat_state_ENU_to_quad_state_ENU(b1d_ENU, ang_vel_ENU, ang_acc_ENU, acc_ENU, jerk_ENU, snap_ENU, yaw, yaw_rate, yaw_acc, g);
-
-	// convert back to FRD
-	
-	const Vector3f _b1d_FRD = R_ENU_TO_FRD * b1d_ENU;
-	const Vector3f _ang_vel_FRD = R_ENU_TO_FRD *  _ang_vel_ENU;
-	const Vector3f _ang_acc_FRD = R_ENU_TO_FRD *  _ang_acc_ENU;	
-	
-	for (size_t i=0; i < 3; i++){
-		b1d_FRD(i) = _b1d_FRD(i);
-		ang_vel_FRD(i) = _ang_vel_FRD(i);
-		ang_acc_FRD(i) = _ang_acc_FRD(i);
-	}
-
-}
-
+const Dcm<float> R_ENU_TO_FRD (Quatf(0.0f, std::sqrt(2.0f)/2.0f, std::sqrt(2.0f)/2.0f, 0.0f) );
 
 void flat_state_ENU_to_quad_state_ENU(Vector3f& b1d, Vector3f& ang_vel, Vector3f& ang_acc, 
   const Vector3f acc, 
@@ -127,7 +79,7 @@ void flat_state_ENU_to_quad_state_ENU(Vector3f& b1d, Vector3f& ang_vel, Vector3f
     // bz = R[:, 3] use zb instead
 
     // construct M matrix
-    SqMatrix4 M;
+    Matrix4f M;
 
     // M[1:3, 1:3] = tau * R * hatizT;
     Vector3f iz (0, 0, 1);
@@ -150,7 +102,7 @@ void flat_state_ENU_to_quad_state_ENU(Vector3f& b1d, Vector3f& ang_vel, Vector3f
     M(3,3) = 0.0;
 
     // get inverse of M
-    SqMatrix4 invM = M.I();
+    Matrix4f invM = M.I();
     
     //Ωτd = invM * [SVector{3}(j); ψd]
     Vector4f omega_taudot = invM * Vector4f(jerk(0), jerk(1), jerk(2), yaw_rate);
@@ -191,7 +143,55 @@ void flat_state_ENU_to_quad_state_ENU(Vector3f& b1d, Vector3f& ang_vel, Vector3f
 }
 
 
+void flat_state_ENU_to_quad_state_FRD(
+		Vector3f& pos_FRD, 
+		Vector3f& vel_FRD, 
+		Vector3f& acc_FRD, 
+		Vector3f& b1d_FRD, 
+		Vector3f& ang_vel_FRD, 
+		Vector3f& ang_acc_FRD, 
+  const Vector3f pos_ENU, 
+  const Vector3f vel_ENU, 
+  const Vector3f acc_ENU, 
+  const Vector3f jerk_ENU,
+  const Vector3f snap_ENU, 
+  float yaw, 
+  float yaw_rate, 
+  float yaw_acc, 
+  float g=9.81f
+) {
+
+	const Vector3f _pos_FRD = R_ENU_TO_FRD * pos_ENU;
+	const Vector3f _vel_FRD = R_ENU_TO_FRD * vel_ENU;
+	const Vector3f _acc_FRD = R_ENU_TO_FRD * acc_ENU;
+
+	for (size_t i=0; i < 3; i++){
+		pos_FRD(i) = _pos_FRD(i);
+		vel_FRD(i) = _vel_FRD(i);
+		acc_FRD(i) = _acc_FRD(i);
+	}
+
+	Vector3f b1d_ENU;
+	Vector3f ang_vel_ENU;
+	Vector3f ang_acc_ENU;
+
+	// RUN flat state conversion within ENU
+	flat_state_ENU_to_quad_state_ENU(b1d_ENU, ang_vel_ENU, ang_acc_ENU, acc_ENU, jerk_ENU, snap_ENU, yaw, yaw_rate, yaw_acc, g);
+
+	// convert back to FRD	
+	const Vector3f _b1d_FRD = R_ENU_TO_FRD * b1d_ENU;
+	const Vector3f _ang_vel_FRD = R_ENU_TO_FRD *  ang_vel_ENU;
+	const Vector3f _ang_acc_FRD = R_ENU_TO_FRD *  ang_acc_ENU;	
+	
+	for (size_t i=0; i < 3; i++){
+		b1d_FRD(i) = _b1d_FRD(i);
+		ang_vel_FRD(i) = _ang_vel_FRD(i);
+		ang_acc_FRD(i) = _ang_acc_FRD(i);
+	}
+
+}
 
 
 } // namespace diffflat
 
+#endif // _DIFFFLATQUAD

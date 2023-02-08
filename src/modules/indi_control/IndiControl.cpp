@@ -10,10 +10,16 @@ IndiControl::IndiControl()
       WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl) {
 
   // set default setpoint
-  _setpoint.pos[0] = 0.0;
-  _setpoint.pos[1] = 0.0;
-  _setpoint.pos[2] = -1.25;
-  _setpoint.yaw = M_PI * 0.5;
+  for (size_t i=0; i<3; i++){
+	  _flat_setpoint.pos[i] = 0.0f;
+	  _flat_setpoint.vel[i] = 0.0f;
+	  _flat_setpoint.acc[i] = 0.0f;
+	  _flat_setpoint.jerk[i] = 0.0f;
+	  _flat_setpoint.snap[i] = 0.0f;
+  }
+  _flat_setpoint.yaw = 0.0; 
+  _flat_setpoint.yaw_rate = 0.0f;
+  _flat_setpoint.yaw_accel = 0.0f;
 
   // set up filters
   _tau_bz_filter.set_cutoff_frequency(RATE_TAU_BZ, RATE_LPF);
@@ -49,6 +55,7 @@ void IndiControl::update_parameters() {
 
   // update all the constants
   _mass = _param_mass.get();
+  _max_motor_rpm = _param_max_rpm.get();
   _thrust_constant = _param_thrust_constant.get();
   _torque_constant = _param_torque_constant.get();
   _J(0, 0) = _param_Jxx.get();
@@ -60,6 +67,8 @@ void IndiControl::update_parameters() {
   _J(2, 0) = _param_Jxz.get();
   _J(2, 1) = _param_Jyz.get();
   _J(2, 2) = _param_Jzz.get();
+
+  _invJ = _J.I();
 
   const float lx = 0.13;
   const float ly = 0.22;
@@ -124,32 +133,36 @@ void IndiControl::service_subscriptions() {
 
 void IndiControl::compute_cmd_accel() {
 
-  Vector3f k_pos(3, 3, 2);
-  Vector3f k_vel(1, 1, 0.75);
-  Vector3f k_acc(0.0, 0.0, 0.0);
+  //Vector3f k_pos(3, 3, 2);
+  Vector3f k_pos(1, 1, 1);
+  //Vector3f k_vel(1, 1, 0.75);
+  Vector3f k_vel(0.5, 0.5,  0.25);
+  Vector3f k_acc(0.0, 0.0, 0.0); //TODO: FIX!
 
   Vector3f x(_local_position.x, _local_position.y, _local_position.z);
   Vector3f v(_local_position.vx, _local_position.vy, _local_position.vz);
 
   // acceleration command (EZRA, EQ:17)
-  _a_cmd = a_ref.zero_if_nan()
+  _a_cmd = _acc_sp.zero_if_nan()
 	  + k_pos.emult((_pos_sp - x).zero_if_nan())
 	  + k_vel.emult((_vel_sp - v).zero_if_nan()) 
 	  + k_acc.emult((_acc_sp - _a_filt).zero_if_nan());
+
+  x.print("x");
+  _a_cmd.print("_a_cmd");
 }
 
 void IndiControl::compute_cmd_thrust() {
-  bool use_geometric = false;
+  bool use_geometric = true;
 
   if (use_geometric) {
 
-    float g = 9.81;
-    Vector3f _z(0, 0, 1);
+    const float g = 9.81;
 
-    Vector3f acc = _a_cmd - g * _z;
+    Vector3f acc_thrust = _a_cmd - g * _iz;
 
-    float coll_acc = acc.dot(Quatf(_attitude.q).rotateVector(_z));
-    _thrust_cmd = -coll_acc * _mass;
+    _thrust_cmd = -_mass * acc_thrust.dot(Quatf(_attitude.q).rotateVector(_iz));
+
   } else {
     // EZRA, EQ:20
     _tau_bz_cmd = _tau_bz_filt + _a_cmd - _a_filt;
@@ -157,39 +170,40 @@ void IndiControl::compute_cmd_thrust() {
     // EZRA, EQ:21
     _thrust_cmd = _mass * _tau_bz_cmd.norm();
   }
+  PX4_INFO("thrust cmd: %.1f", (double)_thrust_cmd);
 }
 
-void IndiControl::compute_cmd_thrust_manual() {
-
-  const float max_thrust =
-      0.75f * 4.0f * _thrust_constant * _max_motor_rpm * _max_motor_rpm;
-
-  _thrust_cmd =
-      _manual_control_z_filter.apply(_manual_control_setpoint.z) * max_thrust;
-}
+// void IndiControl::compute_cmd_thrust_manual() {
+// 
+//   const float max_thrust =
+//       0.75f * 4.0f * _thrust_constant * _max_motor_rpm * _max_motor_rpm;
+// 
+//   _thrust_cmd =
+//       _manual_control_z_filter.apply(_manual_control_setpoint.z) * max_thrust;
+// }
 
 void IndiControl::compute_cmd_quaternion() {
   bool use_geometric = true;
+  
   if (use_geometric) {
     const float g = 9.81f;
-    Vector3f _z(0, 0, 1);
+    
+    Vector3f acc = _a_cmd - g * _iz;
 
-    Vector3f acc = _a_cmd - g * _z;
+    Vector3f b3d = (acc.norm() < 0.01f) ? _iz : -acc.unit();
 
-    Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
-
-    const Vector3f b2d = b3d.cross(_b1d).unit();
+    const Vector3f b2d = b3d.cross(_b1d_sp).unit();
     const Vector3f b1d = b2d.cross(b3d).unit();
 
     // construct desired rot matrix
-    Dcm<float> rotDes;
     for (size_t i = 0; i < 3; i++) {
-      rotDes(i, 0) = b1d(i);
-      rotDes(i, 1) = b2d(i);
-      rotDes(i, 2) = b3d(i);
+      _rotDes(i, 0) = b1d(i);
+      _rotDes(i, 1) = b2d(i);
+      _rotDes(i, 2) = b3d(i);
     }
 
-    _xi_cmd = Quatf(rotDes);
+    _xi_cmd = Quatf(_rotDes);
+  
   } else {
 
     // get body to inertial quaterion
@@ -199,12 +213,11 @@ void IndiControl::compute_cmd_quaternion() {
     Vector3f neg_bz_cmd_body = xi.rotateVectorInverse(-_tau_bz_cmd);
 
     // EZRA, EQ:23
-    Vector3f iz(0, 0, 1);
-    Quatf xi_bar(iz, neg_bz_cmd_body); // min rotation constructor (defined in
-                                       // matrix/Quaternion.hpp)
+    Quatf xi_bar(_iz, neg_bz_cmd_body); // min rotation constructor (defined in
+                                        // matrix/Quaternion.hpp)
 
     // EZRA, EQ:24
-    const float yaw_ref = _setpoint.yaw;
+    const float yaw_ref = _flat_setpoint.yaw;
     Vector3f heading_vec_inertial(std::sin(yaw_ref), -std::cos(yaw_ref), 0);
     Quatf xi_xi_bar = xi * xi_bar;
     Vector3f heading_vec_bar =
@@ -220,53 +233,53 @@ void IndiControl::compute_cmd_quaternion() {
   // publish_xi_cmd();
 }
 
-void IndiControl::compute_cmd_quaternion_manual() {
-
-  const float g = 9.81;
-  const Vector3f _z(0, 0, 1);
-
-  const float max_angle = 30.0f;
-
-  const float max_acc = g * std::tan(max_angle * ((float)M_PI) / 180.f);
-
-  const float max_yaw_rate = 2.0f * (float)M_PI / 8.0f;
-
-  // update yaw setpoint
-  _manual_yaw_setpoint +=
-      _manual_control_setpoint.r * max_yaw_rate / RATE_TORQUE;
-
-  // determine desired roll and pitch
-  float p_acc = _manual_control_setpoint.x * max_acc;
-  float r_acc = _manual_control_setpoint.y * max_acc;
-
-  float c = cosf(_manual_yaw_setpoint);
-  float s = sinf(_manual_yaw_setpoint);
-
-  const Vector3f acc =
-      Vector3f(c * p_acc - s * r_acc, s * p_acc + c * r_acc, -g);
-
-  // get desired body z axis
-  Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
-
-  float b1dx = cosf(_manual_yaw_setpoint);
-  float b1dy = sinf(_manual_yaw_setpoint);
-  float b1dz = 0.0f;
-
-  const Vector3f b1d(b1dx, b1dy, b1dz);
-  const Vector3f b2d = b3d.cross(b1d).unit();
-  const Vector3f b1d_new = b2d.cross(b3d).unit();
-
-  // construct desired rot matrix
-  Dcm<float> rotDes;
-  for (size_t i = 0; i < 3; i++) {
-    rotDes(i, 0) = b1d_new(i);
-    rotDes(i, 1) = b2d(i);
-    rotDes(i, 2) = b3d(i);
-  }
-
-  // convert to quaternion
-  _xi_cmd = Quatf(rotDes);
-}
+// void IndiControl::compute_cmd_quaternion_manual() {
+// 
+//   const float g = 9.81;
+//   const Vector3f _z(0, 0, 1);
+// 
+//   const float max_angle = 30.0f;
+// 
+//   const float max_acc = g * std::tan(max_angle * ((float)M_PI) / 180.f);
+// 
+//   const float max_yaw_rate = 2.0f * (float)M_PI / 8.0f;
+// 
+//   // update yaw setpoint
+//   _manual_yaw_setpoint +=
+//       _manual_control_setpoint.r * max_yaw_rate / RATE_TORQUE;
+// 
+//   // determine desired roll and pitch
+//   float p_acc = _manual_control_setpoint.x * max_acc;
+//   float r_acc = _manual_control_setpoint.y * max_acc;
+// 
+//   float c = cosf(_manual_yaw_setpoint);
+//   float s = sinf(_manual_yaw_setpoint);
+// 
+//   const Vector3f acc =
+//       Vector3f(c * p_acc - s * r_acc, s * p_acc + c * r_acc, -g);
+// 
+//   // get desired body z axis
+//   Vector3f b3d = (acc.norm() < 0.01f) ? _z : -acc.unit();
+// 
+//   float b1dx = cosf(_manual_yaw_setpoint);
+//   float b1dy = sinf(_manual_yaw_setpoint);
+//   float b1dz = 0.0f;
+// 
+//   const Vector3f b1d(b1dx, b1dy, b1dz);
+//   const Vector3f b2d = b3d.cross(b1d).unit();
+//   const Vector3f b1d_new = b2d.cross(b3d).unit();
+// 
+//   // construct desired rot matrix
+//   Dcm<float> rotDes;
+//   for (size_t i = 0; i < 3; i++) {
+//     rotDes(i, 0) = b1d_new(i);
+//     rotDes(i, 1) = b2d(i);
+//     rotDes(i, 2) = b3d(i);
+//   }
+// 
+//   // convert to quaternion
+//   _xi_cmd = Quatf(rotDes);
+// }
 
 void IndiControl::compute_cmd_ang_accel() {
 
@@ -278,7 +291,7 @@ void IndiControl::compute_cmd_ang_accel() {
     const Vector3f kOmega(0.125, 0.125, 0.125 / 2.0);
 
     // get the desired rotation matrix
-    Dcm<float> rotDes(_xi_cmd);
+    _rotDes = Quatf(_xi_cmd);
 
     // construct current rot matrix
     Dcm<float> rotMat(Quatf(_attitude.q));
@@ -286,27 +299,28 @@ void IndiControl::compute_cmd_ang_accel() {
     // get rotation error
     Vector3f rotMat_err =
         0.5f *
-        ((Dcm<float>)((rotDes.T() * rotMat - rotMat.T() * rotDes))).vee();
+        ((Dcm<float>)((_rotDes.T() * rotMat - rotMat.T() * _rotDes))).vee();
 
     // error in angular rate
     Vector3f ang_rate(_ang_vel);
-    Vector3f ang_rate_err = ang_rate - rotMat.T() * rotDes * _ang_vel_sp;
+    Vector3f ang_rate_err = ang_rate - rotMat.T() * _rotDes * _ang_vel_sp;
 
-    if (false) {
+    if (true) {
       // desired moments
       Vector3f omega_cross_Jomega = ang_rate.cross(_J * ang_rate);
 
       Vector3f moments =
-          -kR.emult(rotMat_err) - kOmega.emult(ang_rate_err) +
-          omega_cross_Jomega -
-          _J * (ang_rate.hat() * rotMat.T() * rotDes * ang_rate_sp);
+          - kR.emult(rotMat_err)
+	  - kOmega.emult(ang_rate_err)
+          + omega_cross_Jomega
+	  -_J * (ang_rate.hat() * rotMat.T() * _rotDes * _ang_acc_sp);
 
-      _ang_accel_cmd = _J.I() * (moments - omega_cross_Jomega);
+      _ang_accel_cmd = _invJ * (moments - omega_cross_Jomega);
 
     } else {
 
       _ang_accel_cmd =
-          _J.I() * (-kR.emult(rotMat_err) - kOmega.emult(ang_rate_err));
+          _invJ * (-kR.emult(rotMat_err) - kOmega.emult(ang_rate_err));
     }
 
   } else {
@@ -349,28 +363,35 @@ void IndiControl::compute_cmd_pwm() {
 
   Vector4f rpm_sq = solve_allocator_qp(mu_T);
 
-  // catch negatives
-  for (size_t i = 0; i < 4; i++) {
-    if (rpm_sq(i) < 0.0f) {
-      rpm_sq(i) = 0.0f;
-    }
+  // // catch negatives
+  // for (size_t i = 0; i < 4; i++) {
+  //   if (rpm_sq(i) < 0.0f) {
+  //     rpm_sq(i) = 0.0f;
+  //   }
+  // }
+  //
+  for (size_t i = 0; i < 3 ; i++){
+	  rpm_sq(i) = (2*_max_motor_rpm)*(2*_max_motor_rpm);
   }
 
   // translate from motor RPM to motor PWM
-  Vector4f rpm = rpm_sq.sqrt(); // in units of kilo-rad/s
+  Vector4f rpm = rpm_sq.signed_sqrt(); // in units of kilo-rad/s
 
   // map to RPM
   for (size_t i = 0; i < 4; i++) {
-    _pwm_cmd(i) = rpm(i) / _max_motor_rpm;
-    _pwm_cmd(i) = math::constrain(_pwm_cmd(i), -1.0f, 1.0f);
+    //rpm(i) = math::constrain(rpm(i), -_max_motor_rpm, _max_motor_rpm);
+    _pwm_cmd(i) = 2.0f*(rpm(i) / _max_motor_rpm)-1.0f;
+    rpm_sq(i) = rpm(i) * std::abs(rpm(i));
   }
 
   // update filters
   Vector4f mu_T_applied = _G * rpm_sq;
 
+  PX4_INFO("motor0: PWM: %.2f, speed: %.2f, thrust: %.2f",(double)_pwm_cmd(0), (double)rpm(0), (double)(_thrust_constant*rpm_sq(0))); //  %.2f", (double)mu_T_applied(3));
+
   // // update tau_bz filter
   float thrust = mu_T_applied(3);
-  Vector3f tau_bz = -(thrust / _mass) * _bz;
+  const Vector3f tau_bz = -(thrust / _mass) * _bz;
   if (!tau_bz.has_nan()) {
     _tau_bz_filt = _tau_bz_filter.apply(tau_bz);
   }
@@ -406,44 +427,44 @@ bool IndiControl::check_flight_mode() {
 
 void IndiControl::compute_cmd() {
 
-  bool mode_manual = check_flight_mode();
+  //bool mode_manual = check_flight_mode();
 
-  if (!mode_manual) {
+  //if (!mode_manual) {
     // run the main controller
     compute_cmd_accel();
     compute_cmd_thrust();
     compute_cmd_quaternion();
-  } else {
-    compute_cmd_thrust_manual();
-    compute_cmd_quaternion_manual();
-  }
+  // } else {
+  //   compute_cmd_thrust_manual();
+  //   compute_cmd_quaternion_manual();
+  // }
   compute_cmd_ang_accel();
   compute_cmd_torque();
   compute_cmd_pwm();
 
-  // // print pos error
-  // Vector3f x(_local_position.x, _local_position.y, _local_position.z);
-  // Vector3f x_ref(_setpoint.position);
-  // if (!(x - x_ref).has_nan() && _armed) {
-  //   running_pos_err.update((x - x_ref));
-  //   // Vector3f mu = running_pos_err.mean();
-  //   // Vector3f sigma = running_pos_err.variance().sqrt();
+   // print pos error
+   Vector3f x(_local_position.x, _local_position.y, _local_position.z);
+   Vector3f pos_err = x - _pos_sp;
+   if (!(pos_err.has_nan()) && _armed) {
+     //running_pos_err.update((x - _pos_sp));
+     // Vector3f mu = running_pos_err.mean();
+     // Vector3f sigma = running_pos_err.variance().sqrt();
 
-  //   if (running_pos_err.count() > 10000) {
-  //     running_pos_err.reset();
-  //   }
+     // if (running_pos_err.count() > 10000) {
+     //   running_pos_err.reset();
+     // }
 
-  //   // PX4_INFO("POS ERROR: %f, %f, %f",
-  //   //     (double)(x-x_ref)(0),
-  //   //     (double)(x-x_ref)(1),
-  //   //     (double)(x-x_ref)(2));
+     // PX4_INFO("POS ERROR: %f, %f, %f",
+     //     (double)(pos_err)(0),
+     //     (double)(pos_err)(1),
+     //     (double)(pos_err)(2));
 
-  //   // PX4_INFO("POS ERROR: (%f +- %f)   (%f +- %f)   (%f +- %f)",
-  //   (double)mu(0),
-  //   //         (double)sigma(0), (double)mu(1), (double)sigma(1),
-  //   (double)mu(2),
-  //   //         (double)sigma(2));
-  // }
+     // PX4_INFO("POS ERROR: (%f +- %f)   (%f +- %f)   (%f +- %f)",
+     // (double)mu(0),
+     //         (double)sigma(0), (double)mu(1), (double)sigma(1), 
+     //         (double)mu(2),
+     //         (double)sigma(2));
+   }
 }
 
 void IndiControl::construct_setpoint() {
@@ -483,7 +504,18 @@ void IndiControl::Run() {
   _now = hrt_absolute_time();
   service_subscriptions();
   construct_setpoint();
-  compute_cmd();
+  
+  // check if all subs are ready
+  _ready = _vehicle_local_position_ready 
+	  && _vehicle_attitude_ready
+	  && _sensor_accel_ready
+	  && _ang_vel_ready
+	  && _ang_acc_ready
+	  && _flat_setpoint_ready;
+
+  if (_ready){
+	  compute_cmd();
+  }
 
   // PX4_INFO("PERIOD: %lu INTERVAL: %u", (_now - _last), _interval);
   _last = _now;

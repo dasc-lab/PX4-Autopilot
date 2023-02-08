@@ -1,9 +1,10 @@
 #include <parameters/param.h>
 
-PARAM_DEFINE_FLOAT(INDI_QUAD_MASS, 1.5f);
+PARAM_DEFINE_FLOAT(INDI_QUAD_MASS, 0.8f);
 
-PARAM_DEFINE_FLOAT(INDI_THRUST_K, 5.48f); // Newtons per kilo-rad/s
-PARAM_DEFINE_FLOAT(INDI_TORQUE_K, 0.06f); // 0.06*5.48f // but is wrong? // Newton-Meters per kilo-rad/s
+PARAM_DEFINE_FLOAT(INDI_MAX_RPM, 2.524f); // kilo-rad/s
+PARAM_DEFINE_FLOAT(INDI_THRUST_K, 1.37f); // Newtons per (kilo-rad/s)^2
+PARAM_DEFINE_FLOAT(INDI_TORQUE_K, 0.06f); // 0.06*5.48f // but is wrong? // Newton-Meters per (kilo-rad/s)^2
 
 PARAM_DEFINE_FLOAT(INDI_JXX, 0.03f);
 PARAM_DEFINE_FLOAT(INDI_JXY, 0.0f);

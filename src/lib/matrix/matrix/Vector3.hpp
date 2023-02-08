@@ -9,6 +9,8 @@
 #pragma once
 
 #include "math.hpp"
+#include <iostream>
+#include <string.h>
 
 namespace matrix
 {
@@ -151,6 +153,11 @@ public:
 		A(2, 2) = 0;
 		return A;
 	}
+
+	void print(const char * label) {
+		const Vector3 &v(*this);
+		std::cout << label << ": " << v(0) << ", " << v(1) << ", " << v(2) << std::endl; 
+	}	
 
 };
 

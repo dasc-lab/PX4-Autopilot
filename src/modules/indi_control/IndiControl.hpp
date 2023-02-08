@@ -14,7 +14,6 @@
 #include <lib/mathlib/math/filter/LowPassFilter2p.hpp>
 #include <lib/matrix/matrix/math.hpp>
 #include <lib/perf/perf_counter.h>
-#include <lib/diffflat/DiffFlatQuad.hpp>
 
 #include <uORB/Publication.hpp>
 #include <uORB/Subscription.hpp>
@@ -108,13 +107,17 @@ private:
   void publish_attitude_setpoint(const Dcm<float> rotDes);
   void publish_rates_setpoint(const Vector3f ang_acc);
 
+  // Constants
+  const Vector3f _iz = {0,0,1};
+
   // Quad_params
   float _mass;
   Matrix3f _J;
+  Matrix3f _invJ;
   float _max_rpm;         // used for RPM -> PWM conversion
   float _thrust_constant; // Newtons -> PWM normalization factor
   float _torque_constant;
-  float _max_motor_rpm = 1.100; // in kilo-rad/s
+  float _max_motor_rpm; // in kilo-rad/s
   Matrix4f _G;
   Matrix4f _H;
 
@@ -126,6 +129,7 @@ private:
   Vector3f _tau_bz_cmd;
   Vector3f _tau_bz_filt;
   float _thrust_cmd;
+  Dcm<float> _rotDes;
   Quatf _xi_cmd;
   Vector3f _ang_vel;
   Vector3f _ang_vel_filt;
@@ -166,6 +170,19 @@ private:
   Vector3f _pos_sp, _vel_sp, _acc_sp, _b1d_sp, _ang_vel_sp, _ang_acc_sp; // non-flat setpoints
   vehicle_control_mode_s _vehicle_control_mode;
   manual_control_setpoint_s _manual_control_setpoint;
+
+  // Ready flags
+  bool _armed{false};
+  bool _vehicle_local_position_ready{false};
+  bool _vehicle_attitude_ready{false};
+  bool _sensor_accel_ready{false};
+  bool _ang_vel_ready{false};
+  bool _ang_acc_ready{false};
+  bool _flat_setpoint_ready{false};
+  
+  
+  bool _ready{false};
+
   // Publications
   uORB::Publication<vehicle_torque_setpoint_s> _vehicle_torque_setpoint_pub{
       ORB_ID(vehicle_torque_setpoint)};
@@ -208,6 +225,7 @@ private:
       // example parameter */ (ParamInt<px4::params::SYS_AUTOCONFIG>)
       //_param_sys_autoconfig  /**< another parameter */
       (ParamFloat<px4::params::INDI_QUAD_MASS>)_param_mass,
+      (ParamFloat<px4::params::INDI_MAX_RPM>)_param_max_rpm,
       (ParamFloat<px4::params::INDI_THRUST_K>)_param_thrust_constant,
       (ParamFloat<px4::params::INDI_TORQUE_K>)_param_torque_constant,
       (ParamFloat<px4::params::INDI_JXX>)_param_Jxx,
@@ -217,5 +235,4 @@ private:
       (ParamFloat<px4::params::INDI_JXZ>)_param_Jxz,
       (ParamFloat<px4::params::INDI_JYZ>)_param_Jyz)
 
-  bool _armed{false};
 };
