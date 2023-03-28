@@ -1,0 +1,12 @@
+menuconfig MODULES_SIMPLE_COMMANDER
+	bool "simple_commander"
+	default n
+	---help---
+		Enable support for simple commander
+
+menuconfig USER_SIMPLE_COMMANDER
+	bool "simple_commander running as userspace module"
+	default y
+	depends on BOARD_PROTECTED && MODULES_SIMPLE_COMMANDER
+	---help---
+		Put simple_commander in userspace memory

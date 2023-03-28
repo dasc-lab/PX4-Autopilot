@@ -682,6 +682,7 @@ static constexpr const char *main_state_str(uint8_t main_state)
 
 transition_result_t Commander::arm(arm_disarm_reason_t calling_reason, bool run_preflight_checks)
 {
+	PX4_INFO("COMMANDER::arm");
 	// allow a grace period for re-arming: preflight checks don't need to pass during that time, for example for accidential in-air disarming
 	if (calling_reason == arm_disarm_reason_t::rc_switch
 	    && (hrt_elapsed_time(&_last_disarmed_timestamp) < 5_s)) {
@@ -721,15 +722,15 @@ transition_result_t Commander::arm(arm_disarm_reason_t calling_reason, bool run_
 			return TRANSITION_DENIED;
 		}
 
-		if ((_param_geofence_action.get() == geofence_result_s::GF_ACTION_RTL)
-		    && !_status_flags.home_position_valid) {
-			mavlink_log_critical(&_mavlink_log_pub, "Arming denied: Geofence RTL requires valid home\t");
-			events::send(events::ID("commander_arm_denied_geofence_rtl"),
-			{events::Log::Critical, events::LogInternal::Info},
-			"Arming denied: Geofence RTL requires valid home");
-			tune_negative(true);
-			return TRANSITION_DENIED;
-		}
+		// if ((_param_geofence_action.get() == geofence_result_s::GF_ACTION_RTL)
+		//     && !_status_flags.home_position_valid) {
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Arming denied: Geofence RTL requires valid home\t");
+		// 	events::send(events::ID("commander_arm_denied_geofence_rtl"),
+		// 	{events::Log::Critical, events::LogInternal::Info},
+		// 	"Arming denied: Geofence RTL requires valid home");
+		// 	tune_negative(true);
+		// 	return TRANSITION_DENIED;
+		// }
 	}
 
 	transition_result_t arming_res = _arm_state_machine.arming_state_transition(_status, _vehicle_control_mode, _safety,
@@ -880,6 +881,8 @@ Commander::handle_command(const vehicle_command_s &cmd)
 		break;
 
 	case vehicle_command_s::VEHICLE_CMD_DO_SET_MODE: {
+
+			PX4_INFO("IN VEHICLE_CMD_DO_SET_MODE");
 			uint8_t base_mode = (uint8_t)cmd.param1;
 			uint8_t custom_main_mode = (uint8_t)cmd.param2;
 			uint8_t custom_sub_mode = (uint8_t)cmd.param3;
@@ -2160,7 +2163,7 @@ Commander::run()
 			_arm_requirements.esc_check = _param_escs_checks_required.get();
 			_arm_requirements.global_position = !_param_arm_without_gps.get();
 			_arm_requirements.mission = _param_arm_mission_required.get();
-			_arm_requirements.geofence = _param_geofence_action.get() > geofence_result_s::GF_ACTION_NONE;
+			// _arm_requirements.geofence = _param_geofence_action.get() > geofence_result_s::GF_ACTION_NONE;
 
 			_auto_disarm_killed.set_hysteresis_time_from(false, _param_com_kill_disarm.get() * 1_s);
 			_offboard_available.set_hysteresis_time_from(true, _param_com_of_loss_t.get() * 1_s);

@@ -56,6 +56,8 @@ set VEHICLE_TYPE none
 #
 ver all
 
+echo "IM HERE! - rcS start"
+
 #
 # Try to mount the microSD card.
 #

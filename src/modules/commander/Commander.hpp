@@ -263,7 +263,7 @@ private:
 		(ParamInt<px4::params::CBRK_VTOLARMING>) _param_cbrk_vtolarming,
 
 		// Geofence
-		(ParamInt<px4::params::GF_ACTION>) _param_geofence_action,
+		// (ParamInt<px4::params::GF_ACTION>) _param_geofence_action,
 
 		// Mavlink
 		(ParamInt<px4::params::MAV_COMP_ID>) _param_mav_comp_id,
