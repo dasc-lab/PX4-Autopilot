@@ -1,35 +1,6 @@
-/****************************************************************************
- *
- *   Copyright (c) 2013-2020 PX4 Development Team. All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- * 3. Neither the name PX4 nor the names of its contributors may be
- *    used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
- * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
- * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
- * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
- * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
- * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- *
- ****************************************************************************/
+// Devansh Agrawal 
+// March 2023
+// Adapted from orignal mc_pos_control/MulticopterPositionControl.cpp
 
 #include "MulticopterPositionControl.hpp"
 
@@ -45,16 +16,12 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	SuperBlock(nullptr, "MPC"),
 	ModuleParams(nullptr),
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers),
-	_vehicle_attitude_setpoint_pub(ORB_ID(vehicle_attitude_setpoint)),
 	_vel_x_deriv(this, "VELD"),
 	_vel_y_deriv(this, "VELD"),
 	_vel_z_deriv(this, "VELD")
 {
 	parameters_update(true);
-	_failsafe_land_hysteresis.set_hysteresis_time_from(false, LOITER_TIME_BEFORE_DESCEND);
-	_tilt_limit_slew_rate.setSlewRate(.2f);
 	reset_setpoint_to_nan(_setpoint);
-	_takeoff_status_pub.advertise();
 }
 
 MulticopterPositionControl::~MulticopterPositionControl()
@@ -87,163 +54,165 @@ void MulticopterPositionControl::parameters_update(bool force)
 		ModuleParams::updateParams();
 		SuperBlock::updateParams();
 
-		int num_changed = 0;
+		//int num_changed = 0;
 
-		if (_param_sys_vehicle_resp.get() >= 0.f) {
-			// make it less sensitive at the lower end
-			float responsiveness = _param_sys_vehicle_resp.get() * _param_sys_vehicle_resp.get();
+		// if (_param_sys_vehicle_resp.get() >= 0.f) {
+		// 	// make it less sensitive at the lower end
+		// 	float responsiveness = _param_sys_vehicle_resp.get() * _param_sys_vehicle_resp.get();
 
-			num_changed += _param_mpc_acc_hor.commit_no_notification(math::lerp(1.f, 15.f, responsiveness));
-			num_changed += _param_mpc_acc_hor_max.commit_no_notification(math::lerp(2.f, 15.f, responsiveness));
-			num_changed += _param_mpc_man_y_max.commit_no_notification(math::lerp(80.f, 450.f, responsiveness));
+		// 	num_changed += _param_mpc_acc_hor.commit_no_notification(math::lerp(1.f, 15.f, responsiveness));
+		// 	num_changed += _param_mpc_acc_hor_max.commit_no_notification(math::lerp(2.f, 15.f, responsiveness));
+		// 	num_changed += _param_mpc_man_y_max.commit_no_notification(math::lerp(80.f, 450.f, responsiveness));
 
-			if (responsiveness > 0.6f) {
-				num_changed += _param_mpc_man_y_tau.commit_no_notification(0.f);
+		// 	if (responsiveness > 0.6f) {
+		// 		num_changed += _param_mpc_man_y_tau.commit_no_notification(0.f);
 
-			} else {
-				num_changed += _param_mpc_man_y_tau.commit_no_notification(math::lerp(0.5f, 0.f, responsiveness / 0.6f));
-			}
+		// 	} else {
+		// 		num_changed += _param_mpc_man_y_tau.commit_no_notification(math::lerp(0.5f, 0.f, responsiveness / 0.6f));
+		// 	}
 
-			if (responsiveness < 0.5f) {
-				num_changed += _param_mpc_tiltmax_air.commit_no_notification(45.f);
+		// 	if (responsiveness < 0.5f) {
+		// 		num_changed += _param_mpc_tiltmax_air.commit_no_notification(45.f);
 
-			} else {
-				num_changed += _param_mpc_tiltmax_air.commit_no_notification(math::min(MAX_SAFE_TILT_DEG, math::lerp(45.f, 70.f,
-						(responsiveness - 0.5f) * 2.f)));
-			}
+		// 	} else {
+		// 		num_changed += _param_mpc_tiltmax_air.commit_no_notification(math::min(MAX_SAFE_TILT_DEG, math::lerp(45.f, 70.f,
+		// 				(responsiveness - 0.5f) * 2.f)));
+		// 	}
 
-			num_changed += _param_mpc_acc_down_max.commit_no_notification(math::lerp(0.8f, 15.f, responsiveness));
-			num_changed += _param_mpc_acc_up_max.commit_no_notification(math::lerp(1.f, 15.f, responsiveness));
-			num_changed += _param_mpc_jerk_max.commit_no_notification(math::lerp(2.f, 50.f, responsiveness));
-			num_changed += _param_mpc_jerk_auto.commit_no_notification(math::lerp(1.f, 25.f, responsiveness));
-		}
+		// 	num_changed += _param_mpc_acc_down_max.commit_no_notification(math::lerp(0.8f, 15.f, responsiveness));
+		// 	num_changed += _param_mpc_acc_up_max.commit_no_notification(math::lerp(1.f, 15.f, responsiveness));
+		// 	num_changed += _param_mpc_jerk_max.commit_no_notification(math::lerp(2.f, 50.f, responsiveness));
+		// 	num_changed += _param_mpc_jerk_auto.commit_no_notification(math::lerp(1.f, 25.f, responsiveness));
+		// }
 
-		if (_param_mpc_xy_vel_all.get() >= 0.f) {
-			float xy_vel = _param_mpc_xy_vel_all.get();
-			num_changed += _param_mpc_vel_manual.commit_no_notification(xy_vel);
-			num_changed += _param_mpc_xy_cruise.commit_no_notification(xy_vel);
-			num_changed += _param_mpc_xy_vel_max.commit_no_notification(xy_vel);
-		}
+		// if (_param_mpc_xy_vel_all.get() >= 0.f) {
+		// 	float xy_vel = _param_mpc_xy_vel_all.get();
+		// 	num_changed += _param_mpc_vel_manual.commit_no_notification(xy_vel);
+		// 	num_changed += _param_mpc_xy_cruise.commit_no_notification(xy_vel);
+		// 	num_changed += _param_mpc_xy_vel_max.commit_no_notification(xy_vel);
+		// }
 
-		if (_param_mpc_z_vel_all.get() >= 0.f) {
-			float z_vel = _param_mpc_z_vel_all.get();
-			num_changed += _param_mpc_z_v_auto_up.commit_no_notification(z_vel);
-			num_changed += _param_mpc_z_vel_max_up.commit_no_notification(z_vel);
-			num_changed += _param_mpc_z_v_auto_dn.commit_no_notification(z_vel * 0.75f);
-			num_changed += _param_mpc_z_vel_max_dn.commit_no_notification(z_vel * 0.75f);
-			num_changed += _param_mpc_tko_speed.commit_no_notification(z_vel * 0.6f);
-			num_changed += _param_mpc_land_speed.commit_no_notification(z_vel * 0.5f);
-		}
+		// if (_param_mpc_z_vel_all.get() >= 0.f) {
+		// 	float z_vel = _param_mpc_z_vel_all.get();
+		// 	num_changed += _param_mpc_z_v_auto_up.commit_no_notification(z_vel);
+		// 	num_changed += _param_mpc_z_vel_max_up.commit_no_notification(z_vel);
+		// 	num_changed += _param_mpc_z_v_auto_dn.commit_no_notification(z_vel * 0.75f);
+		// 	num_changed += _param_mpc_z_vel_max_dn.commit_no_notification(z_vel * 0.75f);
+		// 	num_changed += _param_mpc_tko_speed.commit_no_notification(z_vel * 0.6f);
+		// 	num_changed += _param_mpc_land_speed.commit_no_notification(z_vel * 0.5f);
+		// }
 
-		if (num_changed > 0) {
-			param_notify_changes();
-		}
+		// if (num_changed > 0) {
+		// 	param_notify_changes();
+		// }
 
-		if (_param_mpc_tiltmax_air.get() > MAX_SAFE_TILT_DEG) {
-			_param_mpc_tiltmax_air.set(MAX_SAFE_TILT_DEG);
-			_param_mpc_tiltmax_air.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Tilt constrained to safe value\t");
-			/* EVENT
-			 * @description <param>MPC_TILTMAX_AIR</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_tilt_set"), events::Log::Warning,
-					    "Maximum tilt limit has been constrained to a safe value", MAX_SAFE_TILT_DEG);
-		}
+		// if (_param_mpc_tiltmax_air.get() > MAX_SAFE_TILT_DEG) {
+		// 	_param_mpc_tiltmax_air.set(MAX_SAFE_TILT_DEG);
+		// 	_param_mpc_tiltmax_air.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Tilt constrained to safe value\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_TILTMAX_AIR</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_tilt_set"), events::Log::Warning,
+		// 			    "Maximum tilt limit has been constrained to a safe value", MAX_SAFE_TILT_DEG);
+		// }
 
-		if (_param_mpc_tiltmax_lnd.get() > _param_mpc_tiltmax_air.get()) {
-			_param_mpc_tiltmax_lnd.set(_param_mpc_tiltmax_air.get());
-			_param_mpc_tiltmax_lnd.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Land tilt has been constrained by max tilt\t");
-			/* EVENT
-			 * @description <param>MPC_TILTMAX_LND</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_land_tilt_set"), events::Log::Warning,
-					    "Land tilt limit has been constrained by maximum tilt", _param_mpc_tiltmax_air.get());
-		}
+		// if (_param_mpc_tiltmax_lnd.get() > _param_mpc_tiltmax_air.get()) {
+		// 	_param_mpc_tiltmax_lnd.set(_param_mpc_tiltmax_air.get());
+		// 	_param_mpc_tiltmax_lnd.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Land tilt has been constrained by max tilt\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_TILTMAX_LND</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_land_tilt_set"), events::Log::Warning,
+		// 			    "Land tilt limit has been constrained by maximum tilt", _param_mpc_tiltmax_air.get());
+		// }
 
-		_control.setPositionGains(Vector3f(_param_mpc_xy_p.get(), _param_mpc_xy_p.get(), _param_mpc_z_p.get()));
-		_control.setVelocityGains(
-			Vector3f(_param_mpc_xy_vel_p_acc.get(), _param_mpc_xy_vel_p_acc.get(), _param_mpc_z_vel_p_acc.get()),
-			Vector3f(_param_mpc_xy_vel_i_acc.get(), _param_mpc_xy_vel_i_acc.get(), _param_mpc_z_vel_i_acc.get()),
-			Vector3f(_param_mpc_xy_vel_d_acc.get(), _param_mpc_xy_vel_d_acc.get(), _param_mpc_z_vel_d_acc.get()));
-		_control.setHorizontalThrustMargin(_param_mpc_thr_xy_marg.get());
+		// _control.setPositionGains(Vector3f(_param_mpc_xy_p.get(), _param_mpc_xy_p.get(), _param_mpc_z_p.get()));
+		// _control.setVelocityGains(
+		// Vector3f(_param_mpc_xy_vel_p_acc.get(), _param_mpc_xy_vel_p_acc.get(), _param_mpc_z_vel_p_acc.get()),
+		// Vector3f(_param_mpc_xy_vel_i_acc.get(), _param_mpc_xy_vel_i_acc.get(), _param_mpc_z_vel_i_acc.get()),
+		// Vector3f(_param_mpc_xy_vel_d_acc.get(), _param_mpc_xy_vel_d_acc.get(), _param_mpc_z_vel_d_acc.get()));
+    // _control.setHorizontalThrustMargin(_param_mpc_thr_xy_marg.get());
 
-		// Check that the design parameters are inside the absolute maximum constraints
-		if (_param_mpc_xy_cruise.get() > _param_mpc_xy_vel_max.get()) {
-			_param_mpc_xy_cruise.set(_param_mpc_xy_vel_max.get());
-			_param_mpc_xy_cruise.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Cruise speed has been constrained by max speed\t");
-			/* EVENT
-			 * @description <param>MPC_XY_CRUISE</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_cruise_set"), events::Log::Warning,
-					    "Cruise speed has been constrained by maximum speed", _param_mpc_xy_vel_max.get());
-		}
+		// // Check that the design parameters are inside the absolute maximum constraints
+		// if (_param_mpc_xy_cruise.get() > _param_mpc_xy_vel_max.get()) {
+		// 	_param_mpc_xy_cruise.set(_param_mpc_xy_vel_max.get());
+		// 	_param_mpc_xy_cruise.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Cruise speed has been constrained by max speed\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_XY_CRUISE</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_cruise_set"), events::Log::Warning,
+		// 			    "Cruise speed has been constrained by maximum speed", _param_mpc_xy_vel_max.get());
+		// }
 
-		if (_param_mpc_vel_manual.get() > _param_mpc_xy_vel_max.get()) {
-			_param_mpc_vel_manual.set(_param_mpc_xy_vel_max.get());
-			_param_mpc_vel_manual.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Manual speed has been constrained by max speed\t");
-			/* EVENT
-			 * @description <param>MPC_VEL_MANUAL</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_man_vel_set"), events::Log::Warning,
-					    "Manual speed has been constrained by maximum speed", _param_mpc_xy_vel_max.get());
-		}
+		// if (_param_mpc_vel_manual.get() > _param_mpc_xy_vel_max.get()) {
+		// 	_param_mpc_vel_manual.set(_param_mpc_xy_vel_max.get());
+		// 	_param_mpc_vel_manual.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Manual speed has been constrained by max speed\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_VEL_MANUAL</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_man_vel_set"), events::Log::Warning,
+		// 			    "Manual speed has been constrained by maximum speed", _param_mpc_xy_vel_max.get());
+		// }
 
-		if (_param_mpc_z_v_auto_up.get() > _param_mpc_z_vel_max_up.get()) {
-			_param_mpc_z_v_auto_up.set(_param_mpc_z_vel_max_up.get());
-			_param_mpc_z_v_auto_up.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Ascent speed has been constrained by max speed\t");
-			/* EVENT
-			 * @description <param>MPC_Z_V_AUTO_UP</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_up_vel_set"), events::Log::Warning,
-					    "Ascent speed has been constrained by max speed", _param_mpc_z_vel_max_up.get());
-		}
+		// if (_param_mpc_z_v_auto_up.get() > _param_mpc_z_vel_max_up.get()) {
+		// 	_param_mpc_z_v_auto_up.set(_param_mpc_z_vel_max_up.get());
+		// 	_param_mpc_z_v_auto_up.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Ascent speed has been constrained by max speed\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_Z_V_AUTO_UP</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_up_vel_set"), events::Log::Warning,
+		// 			    "Ascent speed has been constrained by max speed", _param_mpc_z_vel_max_up.get());
+		// }
 
-		if (_param_mpc_z_v_auto_dn.get() > _param_mpc_z_vel_max_dn.get()) {
-			_param_mpc_z_v_auto_dn.set(_param_mpc_z_vel_max_dn.get());
-			_param_mpc_z_v_auto_dn.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Descent speed has been constrained by max speed\t");
-			/* EVENT
-			 * @description <param>MPC_Z_V_AUTO_DN</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_down_vel_set"), events::Log::Warning,
-					    "Descent speed has been constrained by max speed", _param_mpc_z_vel_max_dn.get());
-		}
+		// if (_param_mpc_z_v_auto_dn.get() > _param_mpc_z_vel_max_dn.get()) {
+		// 	_param_mpc_z_v_auto_dn.set(_param_mpc_z_vel_max_dn.get());
+		// 	_param_mpc_z_v_auto_dn.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Descent speed has been constrained by max speed\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_Z_V_AUTO_DN</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_down_vel_set"), events::Log::Warning,
+		// 			    "Descent speed has been constrained by max speed", _param_mpc_z_vel_max_dn.get());
+		// }
 
-		if (_param_mpc_thr_hover.get() > _param_mpc_thr_max.get() ||
-		    _param_mpc_thr_hover.get() < _param_mpc_thr_min.get()) {
-			_param_mpc_thr_hover.set(math::constrain(_param_mpc_thr_hover.get(), _param_mpc_thr_min.get(),
-						 _param_mpc_thr_max.get()));
-			_param_mpc_thr_hover.commit();
-			mavlink_log_critical(&_mavlink_log_pub, "Hover thrust has been constrained by min/max\t");
-			/* EVENT
-			 * @description <param>MPC_THR_HOVER</param> is set to {1:.0}.
-			 */
-			events::send<float>(events::ID("mc_pos_ctrl_hover_thrust_set"), events::Log::Warning,
-					    "Hover thrust has been constrained by min/max thrust", _param_mpc_thr_hover.get());
-		}
+		// if (_param_mpc_thr_hover.get() > _param_mpc_thr_max.get() ||
+		//     _param_mpc_thr_hover.get() < _param_mpc_thr_min.get()) {
+		// 	_param_mpc_thr_hover.set(math::constrain(_param_mpc_thr_hover.get(), _param_mpc_thr_min.get(),
+		// 				 _param_mpc_thr_max.get()));
+		// 	_param_mpc_thr_hover.commit();
+		// 	mavlink_log_critical(&_mavlink_log_pub, "Hover thrust has been constrained by min/max\t");
+		// 	/* EVENT
+		// 	 * @description <param>MPC_THR_HOVER</param> is set to {1:.0}.
+		// 	 */
+		// 	events::send<float>(events::ID("mc_pos_ctrl_hover_thrust_set"), events::Log::Warning,
+		// 			    "Hover thrust has been constrained by min/max thrust", _param_mpc_thr_hover.get());
+		// }
 
-		if (!_param_mpc_use_hte.get() || !_hover_thrust_initialized) {
-			_control.setHoverThrust(_param_mpc_thr_hover.get());
-			_hover_thrust_initialized = true;
-		}
+		// if (!_param_mpc_use_hte.get() || !_hover_thrust_initialized) {
+		// 	_control.setHoverThrust(_param_mpc_thr_hover.get());
+		// 	_hover_thrust_initialized = true;
+		// }	
 
-		// initialize vectors from params and enforce constraints
-		_param_mpc_tko_speed.set(math::min(_param_mpc_tko_speed.get(), _param_mpc_z_vel_max_up.get()));
-		_param_mpc_land_speed.set(math::min(_param_mpc_land_speed.get(), _param_mpc_z_vel_max_dn.get()));
+		// // initialize vectors from params and enforce constraints
+		// _param_mpc_tko_speed.set(math::min(_param_mpc_tko_speed.get(), _param_mpc_z_vel_max_up.get()));
+		// _param_mpc_land_speed.set(math::min(_param_mpc_land_speed.get(), _param_mpc_z_vel_max_dn.get()));
 
-		_takeoff.setSpoolupTime(_param_mpc_spoolup_time.get());
-		_takeoff.setTakeoffRampTime(_param_mpc_tko_ramp_t.get());
-		_takeoff.generateInitialRampValue(_param_mpc_z_vel_p_acc.get());
+		// _takeoff.setSpoolupTime(_param_mpc_spoolup_time.get());
+		// _takeoff.setTakeoffRampTime(_param_mpc_tko_ramp_t.get());
+		// _takeoff.generateInitialRampValue(_param_mpc_z_vel_p_acc.get());
 	}
 }
 
-PositionControlStates MulticopterPositionControl::set_vehicle_states(const vehicle_local_position_s &local_pos)
+// Take the EKF state estimate, and construct the local copy
+// handles NANs and validity of ekf data
+IndiPositionControlStates MulticopterPositionControl::set_vehicle_states(const vehicle_local_position_s &local_pos)
 {
-	PositionControlStates states;
+	IndiPositionControlStates states;
 
 	// only set position states if valid and finite
 	if (PX4_ISFINITE(local_pos.x) && PX4_ISFINITE(local_pos.y) && local_pos.xy_valid) {
@@ -319,12 +288,10 @@ void MulticopterPositionControl::Run()
 
 		// set _dt in controllib Block for BlockDerivative
 		setDt(dt);
-		_in_failsafe = false;
 
 		_vehicle_control_mode_sub.update(&_vehicle_control_mode);
-		// _vehicle_land_detected_sub.update(&_vehicle_land_detected);
 
-		PositionControlStates states{set_vehicle_states(local_pos)};
+		IndiPositionControlStates states{set_vehicle_states(local_pos)};
 
 		if (_vehicle_control_mode.flag_multicopter_position_control_enabled) {
 
@@ -443,7 +410,7 @@ void MulticopterPositionControl::Run()
 			// 	math::max(speed_down, 0.f));
 
 			_control.setInputSetpoint(_setpoint);
-			// PX4_INFO("SETPOINT: %f, %f, %f", (double)_setpoint.x, (double)_setpoint.y, (double)_setpoint.z);
+			//PX4_INFO("SETPOINT: %f, %f, %f", (double)_setpoint.x, (double)_setpoint.y, (double)_setpoint.z);
 
 
 			// // update states
@@ -531,57 +498,57 @@ void MulticopterPositionControl::Run()
 	perf_end(_cycle_perf);
 }
 
-void MulticopterPositionControl::failsafe(const hrt_abstime &now, vehicle_local_position_setpoint_s &setpoint,
-		const PositionControlStates &states, bool warn)
-{
-	// do not warn while we are disarmed, as we might not have valid setpoints yet
-	if (!_vehicle_control_mode.flag_armed) {
-		warn = false;
-	}
-
-	// Only react after a short delay
-	_failsafe_land_hysteresis.set_state_and_update(true, now);
-
-	if (_failsafe_land_hysteresis.get_state()) {
-		reset_setpoint_to_nan(setpoint);
-
-		if (PX4_ISFINITE(states.velocity(0)) && PX4_ISFINITE(states.velocity(1))) {
-			// don't move along xy
-			setpoint.vx = setpoint.vy = 0.f;
-
-			if (warn) {
-				PX4_WARN("Failsafe: stop and wait");
-			}
-
-		} else {
-			// descend with land speed since we can't stop
-			setpoint.acceleration[0] = setpoint.acceleration[1] = 0.f;
-			setpoint.vz = _param_mpc_land_speed.get();
-
-			if (warn) {
-				PX4_WARN("Failsafe: blind land");
-			}
-		}
-
-		if (PX4_ISFINITE(states.velocity(2))) {
-			// don't move along z if we can stop in all dimensions
-			if (!PX4_ISFINITE(setpoint.vz)) {
-				setpoint.vz = 0.f;
-			}
-
-		} else {
-			// emergency descend with a bit below hover thrust
-			setpoint.vz = NAN;
-			setpoint.acceleration[2] = .3f;
-
-			if (warn) {
-				PX4_WARN("Failsafe: blind descend");
-			}
-		}
-
-		_in_failsafe = true;
-	}
-}
+// void MulticopterPositionControl::failsafe(const hrt_abstime &now, vehicle_local_position_setpoint_s &setpoint,
+// 		const PositionControlStates &states, bool warn)
+// {
+// 	// do not warn while we are disarmed, as we might not have valid setpoints yet
+// 	if (!_vehicle_control_mode.flag_armed) {
+// 		warn = false;
+// 	}
+// 
+// 	// Only react after a short delay
+// 	_failsafe_land_hysteresis.set_state_and_update(true, now);
+// 
+// 	if (_failsafe_land_hysteresis.get_state()) {
+// 		reset_setpoint_to_nan(setpoint);
+// 
+// 		if (PX4_ISFINITE(states.velocity(0)) && PX4_ISFINITE(states.velocity(1))) {
+// 			// don't move along xy
+// 			setpoint.vx = setpoint.vy = 0.f;
+// 
+// 			if (warn) {
+// 				PX4_WARN("Failsafe: stop and wait");
+// 			}
+// 
+// 		} else {
+// 			// descend with land speed since we can't stop
+// 			setpoint.acceleration[0] = setpoint.acceleration[1] = 0.f;
+// 			setpoint.vz = _param_mpc_land_speed.get();
+// 
+// 			if (warn) {
+// 				PX4_WARN("Failsafe: blind land");
+// 			}
+// 		}
+// 
+// 		if (PX4_ISFINITE(states.velocity(2))) {
+// 			// don't move along z if we can stop in all dimensions
+// 			if (!PX4_ISFINITE(setpoint.vz)) {
+// 				setpoint.vz = 0.f;
+// 			}
+// 
+// 		} else {
+// 			// emergency descend with a bit below hover thrust
+// 			setpoint.vz = NAN;
+// 			setpoint.acceleration[2] = .3f;
+// 
+// 			if (warn) {
+// 				PX4_WARN("Failsafe: blind descend");
+// 			}
+// 		}
+// 
+// 		_in_failsafe = true;
+// 	}
+// }
 
 void MulticopterPositionControl::reset_setpoint_to_nan(vehicle_local_position_setpoint_s &setpoint)
 {

@@ -129,6 +129,7 @@ void Simulator::actuator_controls_from_outputs(mavlink_hil_actuator_controls_t *
 		case MAV_TYPE_VTOL_TAILSITTER_QUADROTOR:
 		case MAV_TYPE_VTOL_TILTROTOR:
 			pos_thrust_motors_count = 4;
+			//PX4_INFO("YES IM A QUAD");
 			is_fixed_wing = false;
 			break;
 
@@ -173,11 +174,15 @@ void Simulator::actuator_controls_from_outputs(mavlink_hil_actuator_controls_t *
 			if (!armed) {
 				/* send 0 when disarmed and for disabled channels */
 				msg->controls[i] = 0.0f;
+				//PX4_WARN("boohoo - disarmed");
 
 			} else if ((is_fixed_wing && i == 4) ||
 				   (!is_fixed_wing && i < pos_thrust_motors_count)) {	//multirotor, rotor channel
 				/* scale PWM out PWM_DEFAULT_MIN..PWM_DEFAULT_MAX us to 0..1 for rotors */
 				msg->controls[i] = (_actuator_outputs.output[i] - PWM_DEFAULT_MIN) / (PWM_DEFAULT_MAX - PWM_DEFAULT_MIN);
+				if (i==0){
+				  PX4_INFO("msg->controls[%d]: %f", i, (double)msg->controls[i]);
+				}
 				msg->controls[i] = math::constrain(msg->controls[i], 0.f, 1.f);
 
 			} else {
@@ -189,6 +194,7 @@ void Simulator::actuator_controls_from_outputs(mavlink_hil_actuator_controls_t *
 				msg->controls[i] = math::constrain(msg->controls[i], -1.f, 1.f);
 			}
 		}
+		//PX4_INFO("msg->controls[0]: %f", msg->controls[0]);
 	}
 
 	msg->mode = mode_flag_custom;
@@ -202,6 +208,8 @@ void Simulator::actuator_controls_from_outputs(mavlink_hil_actuator_controls_t *
 
 void Simulator::send_controls()
 {
+
+	//PX4_INFO("IN SEND CONTROLS");
 	orb_copy(ORB_ID(actuator_outputs), _actuator_outputs_sub, &_actuator_outputs);
 
 	if (_actuator_outputs.timestamp > 0) {
@@ -756,6 +764,12 @@ void Simulator::send()
 			parameters_update(false);
 			check_failure_injections();
 			_vehicle_status_sub.update(&_vehicle_status);
+			//if (_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED){
+			//	PX4_INFO("CHECKING VEHICLE STATUS: armed!");
+			//} else {
+			//	PX4_INFO("CHECKING VEHICLE STATUS: disarmed!");
+			//}
+
 
 			// Wait for other modules, such as logger or ekf2
 			px4_lockstep_wait_for_components();

@@ -63,6 +63,7 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_thrust_setpoint.h>
 #include <uORB/topics/vehicle_torque_setpoint.h>
+#include <uORB/topics/actuator_outputs.h>
 
 // DASC-CUSTOM
 // #include <GeometricControl.hpp>
@@ -78,7 +79,7 @@ using namespace time_literals;
 class MulticopterRateControl : public ModuleBase<MulticopterRateControl>, public ModuleParams, public px4::WorkItem
 {
 public:
-	MulticopterRateControl(bool vtol = false);
+	MulticopterRateControl();
 	~MulticopterRateControl() override;
 
 	/** @see ModuleBase */
@@ -106,56 +107,21 @@ private:
 	void publishThrustSetpoint(const hrt_abstime &timestamp_sample);
 
 	RateControl _rate_control; ///< class for rate control calculations
-	// GeometricControl _geometric_control; ///< class for geometric control calculations
 
-	uORB::Subscription _battery_status_sub{ORB_ID(battery_status)};
-	uORB::Subscription _landing_gear_sub{ORB_ID(landing_gear)};
-	uORB::Subscription _manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
-	uORB::Subscription _control_allocator_status_sub{ORB_ID(control_allocator_status)};
 	uORB::Subscription _v_control_mode_sub{ORB_ID(vehicle_control_mode)};
 	uORB::Subscription _v_rates_sp_sub{ORB_ID(vehicle_rates_setpoint)};
 	uORB::Subscription _vehicle_angular_acceleration_sub{ORB_ID(vehicle_angular_acceleration)};
-	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
-
-  // DASC CUSTOM
-	uORB::Subscription _external_controller_sub{ORB_ID(external_controller)};
-  uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
-  uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
-  uORB::Subscription _trajectory_setpoint_sub{ORB_ID(trajectory_setpoint)};
-
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::SubscriptionCallbackWorkItem _vehicle_angular_velocity_sub{this, ORB_ID(vehicle_angular_velocity)};
 
-	uORB::Publication<actuator_controls_s>		_actuators_0_pub;
-	uORB::Publication<actuator_controls_status_s>	_actuator_controls_status_0_pub{ORB_ID(actuator_controls_status_0)};
-	uORB::PublicationMulti<rate_ctrl_status_s>	_controller_status_pub{ORB_ID(rate_ctrl_status)};
-	uORB::Publication<vehicle_rates_setpoint_s>	_v_rates_sp_pub{ORB_ID(vehicle_rates_setpoint)};
-	uORB::Publication<vehicle_thrust_setpoint_s>	_vehicle_thrust_setpoint_pub{ORB_ID(vehicle_thrust_setpoint)};
-	uORB::Publication<vehicle_torque_setpoint_s>	_vehicle_torque_setpoint_pub{ORB_ID(vehicle_torque_setpoint)};
+	uORB::Publication<actuator_outputs_s> _actuator_outputs_pub{ORB_ID(actuator_outputs)};
 
-	orb_advert_t _mavlink_log_pub{nullptr};
-
-	vehicle_control_mode_s		_v_control_mode{};
 	vehicle_status_s		_vehicle_status{};
 
-	matrix::Vector3f moving_error;
-
-  // DASC CUSOM 
-  // external_controller_s                 _external_controller{};
-	// vehicle_attitude_s                    _vehicle_attitude{};
-  // vehicle_local_position_s              _vehicle_local_position{};
-  // vehicle_local_position_setpoint_s     _trajectory_setpoint{};
-
-
-  
-  bool _actuators_0_circuit_breaker_enabled{false};	/**< circuit breaker to suppress output */
-	bool _landed{true};
-	bool _maybe_landed{true};
-
-	float _battery_status_scale{0.0f};
+	//matrix::Vector3f moving_error;
 
 	perf_counter_t	_loop_perf;			/**< loop duration performance counter */
 
@@ -165,10 +131,8 @@ private:
 
 	hrt_abstime _last_run{0};
 
-	int8_t _landing_gear{landing_gear_s::GEAR_DOWN};
-
-	float _energy_integration_time{0.0f};
-	float _control_energy[4] {};
+  matrix::SquareMatrix<float, 4> _G;
+  matrix::SquareMatrix<float, 4> _invG;
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::INDI_ROLLRATE_P>) _param_indi_rollrate_p,

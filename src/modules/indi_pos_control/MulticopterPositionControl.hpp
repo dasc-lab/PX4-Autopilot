@@ -37,7 +37,7 @@
 
 #pragma once
 
-#include "PositionControl/PositionControl.hpp"
+#include "PositionControl/IndiPositionControl.hpp"
 #include "Takeoff/Takeoff.hpp"
 
 #include <drivers/drv_hrt.h>
@@ -88,11 +88,8 @@ public:
 private:
 	void Run() override;
 
-	Takeoff _takeoff; /**< state machine and ramp to bring the vehicle off the ground without jumps */
+	//orb_advert_t _mavlink_log_pub{nullptr};
 
-	orb_advert_t _mavlink_log_pub{nullptr};
-
-	uORB::PublicationData<takeoff_status_s>              _takeoff_status_pub {ORB_ID(takeoff_status)};
 	uORB::Publication<vehicle_attitude_setpoint_s>	     _vehicle_attitude_setpoint_pub {ORB_ID(vehicle_attitude_setpoint)};
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub {ORB_ID(vehicle_local_position_setpoint)};	/**< vehicle local position setpoint publication */
 
@@ -100,31 +97,13 @@ private:
 
 	uORB::SubscriptionInterval _parameter_update_sub {ORB_ID(parameter_update), 1_s};
 
-	uORB::Subscription _hover_thrust_estimate_sub {ORB_ID(hover_thrust_estimate)};
 	uORB::Subscription _trajectory_setpoint_sub {ORB_ID(trajectory_setpoint)};
-	uORB::Subscription _vehicle_constraints_sub {ORB_ID(vehicle_constraints)};
 	uORB::Subscription _vehicle_control_mode_sub {ORB_ID(vehicle_control_mode)};
-	uORB::Subscription _vehicle_land_detected_sub {ORB_ID(vehicle_land_detected)};
-
+	
 	hrt_abstime	_time_stamp_last_loop{0};		/**< time stamp of last loop iteration */
 
 	vehicle_local_position_setpoint_s _setpoint {};
 	vehicle_control_mode_s _vehicle_control_mode {};
-
-	// vehicle_constraints_s _vehicle_constraints {
-	// 	.timestamp = 0,
-	// 	.speed_up = NAN,
-	// 	.speed_down = NAN,
-	// 	.want_takeoff = false,
-	// };
-
-	// vehicle_land_detected_s _vehicle_land_detected {
-	// 	.timestamp = 0,
-	// 	.freefall = false,
-	// 	.ground_contact = true,
-	// 	.maybe_landed = true,
-	// 	.landed = true,
-	// };
 
 	DEFINE_PARAMETERS(
 		// Position Control
@@ -179,27 +158,15 @@ private:
 	control::BlockDerivative _vel_y_deriv; /**< velocity derivative in y */
 	control::BlockDerivative _vel_z_deriv; /**< velocity derivative in z */
 
-	PositionControl _control;  /**< class for core PID position control */
-
-	// hrt_abstime _last_warn{0}; /**< timer when the last warn message was sent out */
-
-	bool _in_failsafe{false};  /**< true if failsafe was entered within current cycle */
-
-	bool _hover_thrust_initialized{false};
+	IndiPositionControl _control;  /**< class for core PID position control */
 
 	/** Timeout in us for trajectory data to get considered invalid */
 	static constexpr uint64_t TRAJECTORY_STREAM_TIMEOUT_US = 500_ms;
-
-	/** If Flighttask fails, keep 0.2 seconds the current setpoint before going into failsafe land */
-	static constexpr uint64_t LOITER_TIME_BEFORE_DESCEND = 200_ms;
 
 	/** During smooth-takeoff, below ALTITUDE_THRESHOLD the yaw-control is turned off and tilt is limited */
 	static constexpr float ALTITUDE_THRESHOLD = 0.3f;
 
 	static constexpr float MAX_SAFE_TILT_DEG = 89.f; // Numerical issues above this value due to tanf
-
-	systemlib::Hysteresis _failsafe_land_hysteresis{false}; /**< becomes true if task did not update correctly for LOITER_TIME_BEFORE_DESCEND */
-	SlewRate<float> _tilt_limit_slew_rate;
 
 	uint8_t _vxy_reset_counter{0};
 	uint8_t _vz_reset_counter{0};
@@ -209,27 +176,10 @@ private:
 
 	perf_counter_t _cycle_perf{perf_alloc(PC_ELAPSED, MODULE_NAME": cycle time")};
 
-	/**
-	 * Update our local parameter cache.
-	 * Parameter update can be forced when argument is true.
-	 * @param force forces parameter update.
-	 */
 	void parameters_update(bool force);
 
-	/**
-	 * Check for validity of positon/velocity states.
-	 */
-	PositionControlStates set_vehicle_states(const vehicle_local_position_s &local_pos);
-
-	/**
-	 * Failsafe.
-	 * If flighttask fails for whatever reason, then do failsafe. This could
-	 * occur if the commander fails to switch to a mode in case of invalid states or
-	 * setpoints. The failsafe will occur after LOITER_TIME_BEFORE_DESCEND. If force is set
-	 * to true, the failsafe will be initiated immediately.
-	 */
-	void failsafe(const hrt_abstime &now, vehicle_local_position_setpoint_s &setpoint, const PositionControlStates &states,
-		      bool warn);
+	IndiPositionControlStates set_vehicle_states(const vehicle_local_position_s &local_pos);
+	// bool _hover_thrust_initialized = false;
 
 	/**
 	 * Reset setpoints to NAN

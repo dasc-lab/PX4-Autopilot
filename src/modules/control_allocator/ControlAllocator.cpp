@@ -292,6 +292,8 @@ ControlAllocator::Run()
 
 	perf_begin(_loop_perf);
 
+	PX4_INFO("IN CONTROL ALLOCATOR");
+
 	// Push backup schedule
 	ScheduleDelayed(50_ms);
 
@@ -371,6 +373,8 @@ ControlAllocator::Run()
 
 	if (do_update) {
 		_last_run = now;
+
+		PX4_INFO("IN DO UPDATE");
 
 		update_effectiveness_matrix_if_needed(EffectivenessUpdateReason::NO_EXTERNAL_UPDATE);
 

@@ -106,6 +106,10 @@ bool PositionControl::update(const float dt)
 {
 	bool valid = _inputValid();
 
+	if (!valid){
+		PX4_WARN("INPUT IS NOT VALID");
+	}
+
 	if (valid) {
 		_positionControl();
 		_velocityControl(dt);
@@ -129,12 +133,13 @@ void PositionControl::_positionControl()
 	ControlMath::addIfNotNanVector3f(_vel_sp, vel_sp_position);
 	// make sure there are no NAN elements for further reference while constraining
 	ControlMath::setZeroIfNanVector3f(vel_sp_position);
+	PX4_INFO("_vel_sp: %f", (double)(_vel_sp.norm()));
 
 	// Constrain horizontal velocity by prioritizing the velocity component along the
 	// the desired position setpoint over the feed-forward term.
-	_vel_sp.xy() = ControlMath::constrainXY(vel_sp_position.xy(), (_vel_sp - vel_sp_position).xy(), _lim_vel_horizontal);
+	//_vel_sp.xy() = ControlMath::constrainXY(vel_sp_position.xy(), (_vel_sp - vel_sp_position).xy(), _lim_vel_horizontal);
 	// Constrain velocity in z-direction.
-	_vel_sp(2) = math::constrain(_vel_sp(2), -_lim_vel_up, _lim_vel_down);
+	//_vel_sp(2) = math::constrain(_vel_sp(2), -_lim_vel_up, _lim_vel_down);
 }
 
 void PositionControl::_velocityControl(const float dt)
@@ -145,6 +150,7 @@ void PositionControl::_velocityControl(const float dt)
 
 	// No control input from setpoints or corresponding states which are NAN
 	ControlMath::addIfNotNanVector3f(_acc_sp, acc_sp_velocity);
+	PX4_INFO("_acc_sp: %f", (double)(_acc_sp.norm()));
 
 	_accelerationControl();
 
@@ -198,9 +204,11 @@ void PositionControl::_accelerationControl()
 {
 	// Assume standard acceleration due to gravity in vertical direction for attitude generation
 	Vector3f body_z = Vector3f(-_acc_sp(0), -_acc_sp(1), CONSTANTS_ONE_G).normalized();
-	ControlMath::limitTilt(body_z, Vector3f(0, 0, 1), _lim_tilt);
+	PX4_INFO("acc_control body_z: %f, %f, %f", (double)body_z(0), (double)body_z(1), (double)body_z(2));
+	//ControlMath::limitTilt(body_z, Vector3f(0, 0, 1), _lim_tilt);
 	// Scale thrust assuming hover thrust produces standard gravity
 	float collective_thrust = _acc_sp(2) * (_hover_thrust / CONSTANTS_ONE_G) - _hover_thrust;
+	PX4_INFO("hover_thrust: %f", (double)_hover_thrust);
 	// Project thrust to planned body attitude
 	collective_thrust /= (Vector3f(0, 0, 1).dot(body_z));
 	collective_thrust = math::min(collective_thrust, -_lim_thr_min);

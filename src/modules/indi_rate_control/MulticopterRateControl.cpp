@@ -43,20 +43,60 @@ using namespace matrix;
 using namespace time_literals;
 using math::radians;
 
-MulticopterRateControl::MulticopterRateControl(bool vtol) :
+MulticopterRateControl::MulticopterRateControl() :
 	ModuleParams(nullptr),
 	WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
-	_actuators_0_pub(vtol ? ORB_ID(actuator_controls_virtual_mc) : ORB_ID(actuator_controls_0)),
 	_loop_perf(perf_alloc(PC_ELAPSED, MODULE_NAME": cycle"))
 {
 	_vehicle_status.vehicle_type = vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
 
 	parameters_updated();
-	_controller_status_pub.advertise();
+	//_controller_status_pub.advertise();
 
-	moving_error(0) = 0.0;
-	moving_error(1) = 0.0;
-	moving_error(2) = 0.0;
+	//moving_error(0) = 0.0;
+	//moving_error(1) = 0.0;
+	//moving_error(2) = 0.0;
+	
+
+	construct_G_matrix();
+
+}
+
+void MulticopterRateControl::construct_G_matrix()
+{
+  
+	// construct the G, Ginv matrix,
+	// assumes the quadrotor is arranged as follows:
+	//
+	//   3     1
+	//      x
+	//   2     4
+	//
+	// where 1 is spinning ccw
+	//
+	// Use an FRD frame
+	//
+	// assume relationship is 
+	// [thrust, torque] = G * omega.^2
+	// 
+	// where 
+	//   thrust is in N
+	//   torque is in Nm
+	//   omega is in kilo-rad/s
+
+	float LX = 0.3;
+	float LY = 0.3;
+	float k_thrust = 1.0;
+	float k_torque = 0.6;
+
+	for (size_t motor_ind = 0; motor_ind < 4; motor_ind ++){
+
+		_G(0, motor_ind) = -k_thrust;
+	// TODO: CONTINUE HERE	
+
+
+	}
+
 }
 
 MulticopterRateControl::~MulticopterRateControl()
@@ -130,11 +170,11 @@ MulticopterRateControl::Run()
 
 	if (_vehicle_angular_velocity_sub.update(&angular_velocity)) {
 
-		// grab corresponding vehicle_angular_acceleration immediately after vehicle_angular_velocity copy
+		// GRAB VEHICLE_ANGULAR_ACCEL (immediately)
 		vehicle_angular_acceleration_s v_angular_acceleration{};
 		_vehicle_angular_acceleration_sub.copy(&v_angular_acceleration);
-
 		const hrt_abstime now = angular_velocity.timestamp_sample;
+
 
 		// Guard against too small (< 0.125ms) and too large (> 20ms) dt's.
 		const float dt = math::constrain(((now - _last_run) * 1e-6f), 0.000125f, 0.02f);
@@ -143,228 +183,77 @@ MulticopterRateControl::Run()
 		const Vector3f angular_accel{v_angular_acceleration.xyz};
 		const Vector3f rates{angular_velocity.xyz};
 
-		/* check for updates in other topics */
-		_v_control_mode_sub.update(&_v_control_mode);
-
-		if (_vehicle_land_detected_sub.updated()) {
-			vehicle_land_detected_s vehicle_land_detected;
-
-			if (_vehicle_land_detected_sub.copy(&vehicle_land_detected)) {
-				_landed = vehicle_land_detected.landed;
-				_maybe_landed = vehicle_land_detected.maybe_landed;
-			}
-		}
-
 		_vehicle_status_sub.update(&_vehicle_status);
 
-		if (_landing_gear_sub.updated()) {
-			landing_gear_s landing_gear;
-
-			if (_landing_gear_sub.copy(&landing_gear)) {
-				if (landing_gear.landing_gear != landing_gear_s::GEAR_KEEP) {
-					if (landing_gear.landing_gear == landing_gear_s::GEAR_UP && (_landed || _maybe_landed)) {
-						mavlink_log_critical(&_mavlink_log_pub, "Landed, unable to retract landing gear\t");
-						events::send(events::ID("indi_rate_control_not_retract_landing_gear_landed"),
-						{events::Log::Error, events::LogInternal::Info},
-						"Landed, unable to retract landing gear");
-
-					} else {
-						_landing_gear = landing_gear.landing_gear;
-					}
-				}
-			}
+		// GRAB rates setpoint
+		vehicle_rates_setpoint_s v_rates_sp;
+		if (_v_rates_sp_sub.update(&v_rates_sp)) {
+			_rates_sp(0) = PX4_ISFINITE(v_rates_sp.roll)  ? v_rates_sp.roll  : rates(0);
+			_rates_sp(1) = PX4_ISFINITE(v_rates_sp.pitch) ? v_rates_sp.pitch : rates(1);
+			_rates_sp(2) = PX4_ISFINITE(v_rates_sp.yaw)   ? v_rates_sp.yaw   : rates(2);
+			_thrust_sp = -v_rates_sp.thrust_body[2];
 		}
+		
+		// Run the rate controller
+		
+		float _kp = 1.0;
+		float _kd = 1.7;
+		Vector3f torque_cmd = _rates_sp + _kp * (_rates_sp - rates) - _kd * (angular_accel);
 
-		if (_v_control_mode.flag_control_manual_enabled && !_v_control_mode.flag_control_attitude_enabled) {
-			// generate the rate setpoint from sticks
-			manual_control_setpoint_s manual_control_setpoint;
+		//Vector3f att_control = _rate_control.update(rates, _rates_sp, angular_accel, dt, false);
+		//moving_error = 0.99f * moving_error + 0.01f * (rates - _rates_sp);
 
-			if (_manual_control_setpoint_sub.update(&manual_control_setpoint)) {
-				// manual rates control - ACRO mode
-				const Vector3f man_rate_sp{
-					math::superexpo(manual_control_setpoint.y, _param_indi_acro_expo.get(), _param_indi_acro_supexpo.get()),
-					math::superexpo(-manual_control_setpoint.x, _param_indi_acro_expo.get(), _param_indi_acro_supexpo.get()),
-					math::superexpo(manual_control_setpoint.r, _param_indi_acro_expo_y.get(), _param_indi_acro_supexpoy.get())};
+		// Do the mixing
+		Vector4f omega = mix(torque_cmd, _thrust_sp);
 
-				_rates_sp = man_rate_sp.emult(_acro_rate_max);
-				_thrust_sp = math::constrain(manual_control_setpoint.z, 0.0f, 1.0f);
-
-				// publish rate setpoint
-				vehicle_rates_setpoint_s v_rates_sp{};
-				v_rates_sp.roll = _rates_sp(0);
-				v_rates_sp.pitch = _rates_sp(1);
-				v_rates_sp.yaw = _rates_sp(2);
-				v_rates_sp.thrust_body[0] = 0.0f;
-				v_rates_sp.thrust_body[1] = 0.0f;
-				v_rates_sp.thrust_body[2] = -_thrust_sp;
-				v_rates_sp.timestamp = hrt_absolute_time();
-
-				_v_rates_sp_pub.publish(v_rates_sp);
-			}
-
-		} else {
-			// use rates setpoint topic
-			vehicle_rates_setpoint_s v_rates_sp;
-
-			if (_v_rates_sp_sub.update(&v_rates_sp)) {
-				_rates_sp(0) = PX4_ISFINITE(v_rates_sp.roll)  ? v_rates_sp.roll  : rates(0);
-				_rates_sp(1) = PX4_ISFINITE(v_rates_sp.pitch) ? v_rates_sp.pitch : rates(1);
-				_rates_sp(2) = PX4_ISFINITE(v_rates_sp.yaw)   ? v_rates_sp.yaw   : rates(2);
-				_thrust_sp = -v_rates_sp.thrust_body[2];
-			}
-		}
-
-		// run the rate controller
-		if (_v_control_mode.flag_control_rates_enabled && !_actuators_0_circuit_breaker_enabled) {
-
-			// reset integral if disarmed
-			if (!_v_control_mode.flag_armed || _vehicle_status.vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
-				_rate_control.resetIntegral();
-			}
-
-			// update saturation status from control allocation feedback
-			control_allocator_status_s control_allocator_status;
-
-			if (_control_allocator_status_sub.update(&control_allocator_status)) {
-				Vector<bool, 3> saturation_positive;
-				Vector<bool, 3> saturation_negative;
-
-				if (!control_allocator_status.torque_setpoint_achieved) {
-					for (size_t i = 0; i < 3; i++) {
-						if (control_allocator_status.unallocated_torque[i] > FLT_EPSILON) {
-							saturation_positive(i) = true;
-
-						} else if (control_allocator_status.unallocated_torque[i] < -FLT_EPSILON) {
-							saturation_negative(i) = true;
-						}
-					}
-				}
-
-				// TODO: send the unallocated value directly for better anti-windup
-				_rate_control.setSaturationStatus(saturation_positive, saturation_negative);
-			}
-
-			// run rate controller
-			Vector3f att_control = _rate_control.update(rates, _rates_sp, angular_accel, dt, _maybe_landed || _landed);
-			moving_error = 0.99f * moving_error + 0.01f * (rates - _rates_sp);
-			// PX4_INFO("MOVING SETPOINT ERROR: %f, %f, %f", (double)moving_error(0), (double)moving_error(1), (double)moving_error(2));
-			// PX4_INFO("MOVING SETPOINT ERROR: %f", (double)moving_error.norm());
-
-
-			// publish rate controller status
-			rate_ctrl_status_s rate_ctrl_status{};
-			_rate_control.getRateControlStatus(rate_ctrl_status);
-			rate_ctrl_status.timestamp = hrt_absolute_time();
-			_controller_status_pub.publish(rate_ctrl_status);
-
-
-			// publish actuator controls
-			actuator_controls_s actuators{};
-			actuators.control[actuator_controls_s::INDEX_ROLL] = PX4_ISFINITE(att_control(0)) ? att_control(0) : 0.0f;
-			actuators.control[actuator_controls_s::INDEX_PITCH] = PX4_ISFINITE(att_control(1)) ? att_control(1) : 0.0f;
-			actuators.control[actuator_controls_s::INDEX_YAW] = PX4_ISFINITE(att_control(2)) ? att_control(2) : 0.0f;
-			actuators.control[actuator_controls_s::INDEX_THROTTLE] = PX4_ISFINITE(_thrust_sp) ? _thrust_sp : 0.0f;
-			actuators.control[actuator_controls_s::INDEX_LANDING_GEAR] = _landing_gear;
-			actuators.timestamp_sample = angular_velocity.timestamp_sample;
-
-			if (!_vehicle_status.is_vtol) {
-				publishTorqueSetpoint(att_control, angular_velocity.timestamp_sample);
-				publishThrustSetpoint(angular_velocity.timestamp_sample);
-			}
-
-			// scale effort by battery status if enabled
-			if (_param_indi_bat_scale_en.get()) {
-				if (_battery_status_sub.updated()) {
-					battery_status_s battery_status;
-
-					if (_battery_status_sub.copy(&battery_status) && battery_status.connected && battery_status.scale > 0.f) {
-						_battery_status_scale = battery_status.scale;
-					}
-				}
-
-				if (_battery_status_scale > 0.0f) {
-					for (int i = 0; i < 4; i++) {
-						actuators.control[i] *= _battery_status_scale;
-					}
-				}
-			}
-
-			actuators.timestamp = hrt_absolute_time();
-			_actuators_0_pub.publish(actuators);
-
-			updateActuatorControlsStatus(actuators, dt);
-
-		} else if (_v_control_mode.flag_control_termination_enabled) {
-			if (!_vehicle_status.is_vtol) {
-				// publish actuator controls
-				actuator_controls_s actuators{};
-				actuators.timestamp = hrt_absolute_time();
-				_actuators_0_pub.publish(actuators);
-			}
-		}
+		publish_actuator_outputs(omega);
+	
 	}
 
 	perf_end(_loop_perf);
 }
 
-void MulticopterRateControl::publishTorqueSetpoint(const Vector3f &torque_sp, const hrt_abstime &timestamp_sample)
-{
-	vehicle_torque_setpoint_s v_torque_sp = {};
-	v_torque_sp.timestamp = hrt_absolute_time();
-	v_torque_sp.timestamp_sample = timestamp_sample;
-	v_torque_sp.xyz[0] = (PX4_ISFINITE(torque_sp(0))) ? torque_sp(0) : 0.0f;
-	v_torque_sp.xyz[1] = (PX4_ISFINITE(torque_sp(1))) ? torque_sp(1) : 0.0f;
-	v_torque_sp.xyz[2] = (PX4_ISFINITE(torque_sp(2))) ? torque_sp(2) : 0.0f;
 
-	_vehicle_torque_setpoint_pub.publish(v_torque_sp);
+Vector4f MulticopterRateControl::mix(Vector3f torque_cmd, float thrust_cmd)
+{
+
+	Vector4f fM (thrust_cmd, torque_cmd(0), torque_cmd(1), torque_cmd(2));
+
+	Vector4f omega = _Ginv * fM;
+
+	return omega
+
 }
 
-void MulticopterRateControl::publishThrustSetpoint(const hrt_abstime &timestamp_sample)
+// INPUT: Vector4f omega, the desired angular speeds of each motor
+void MulticopterRateControl::publish_actuator_outputs(Vector4f omega)
 {
-	vehicle_thrust_setpoint_s v_thrust_sp = {};
-	v_thrust_sp.timestamp = hrt_absolute_time();
-	v_thrust_sp.timestamp_sample = timestamp_sample;
-	v_thrust_sp.xyz[0] = 0.0f;
-	v_thrust_sp.xyz[1] = 0.0f;
-	v_thrust_sp.xyz[2] = PX4_ISFINITE(_thrust_sp) ? -_thrust_sp : 0.0f; // Z is Down
 
-	_vehicle_thrust_setpoint_pub.publish(v_thrust_sp);
-}
+	const float MOTOR_SPEED_MAX = 2000.0;
+	const float PWM_MIN = 1000.0f;
+	const float PWM_MAX = 2000.0f;
 
-void MulticopterRateControl::updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt)
-{
-	for (int i = 0; i < 4; i++) {
-		_control_energy[i] += actuators.control[i] * actuators.control[i] * dt;
+
+	// Each acutator output is in range of PWM_MIN:PWM_MAX
+	actuator_outputs_s actuator_outputs;
+
+	for (size_t i=0; i<4; i++){
+		// assumes linear scaling between PWM and omega output
+		actuator_outputs.output[i] = PWM_MIN + (PWM_MAX-PWM_MIN) * (omega(i) / MOTOR_SPEED_MAX);
 	}
+	
+	actuator_outputs.timestamp = hrt_absolute_time();
+	actuator_outputs.noutputs = 4;
 
-	_energy_integration_time += dt;
+	_actuator_outputs_pub.publish(actuator_outputs);
 
-	if (_energy_integration_time > 500e-3f) {
-
-		actuator_controls_status_s status;
-		status.timestamp = actuators.timestamp;
-
-		for (int i = 0; i < 4; i++) {
-			status.control_power[i] = _control_energy[i] / _energy_integration_time;
-			_control_energy[i] = 0.f;
-		}
-
-		_actuator_controls_status_0_pub.publish(status);
-		_energy_integration_time = 0.f;
-	}
 }
+
 
 int MulticopterRateControl::task_spawn(int argc, char *argv[])
 {
-	bool vtol = false;
-
-	if (argc > 1) {
-		if (strcmp(argv[1], "vtol") == 0) {
-			vtol = true;
-		}
-	}
-
-	MulticopterRateControl *instance = new MulticopterRateControl(vtol);
+	
+	MulticopterRateControl *instance = new MulticopterRateControl();
 
 	if (instance) {
 		_object.store(instance);
@@ -408,7 +297,6 @@ The controller has a PID loop for angular rate error.
 
 	PRINT_MODULE_USAGE_NAME("indi_rate_control", "controller");
 	PRINT_MODULE_USAGE_COMMAND("start");
-	PRINT_MODULE_USAGE_ARG("vtol", "VTOL mode", true);
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
 	return 0;

@@ -650,6 +650,7 @@ bool MixingOutput::updateStaticMixer()
 
 	// check arming state
 	if (_armed_sub.update(&_armed)) {
+	PX4_INFO("MIXER THINKS ARMED: %d", _armed.armed);
 		_armed.in_esc_calibration_mode &= _support_esc_calibration;
 
 		if (_ignore_lockdown) {
@@ -712,6 +713,9 @@ bool MixingOutput::updateStaticMixer()
 	/* do mixing */
 	float outputs[MAX_ACTUATORS] {};
 	const unsigned mixed_num_outputs = _mixers->mix(outputs, _max_num_outputs);
+	for (size_t i= 0; i < mixed_num_outputs; i++){
+		PX4_INFO("MIXED OUT: [%zu]: %f", i, (double)outputs[i]);
+	}
 
 	/* the output limit call takes care of out of band errors, NaN and constrains */
 	output_limit_calc(_throttle_armed, mixed_num_outputs, outputs);
@@ -1016,6 +1020,7 @@ MixingOutput::setAndPublishActuatorOutputs(unsigned num_outputs, actuator_output
 
 	actuator_outputs.timestamp = hrt_absolute_time();
 	_outputs_pub.publish(actuator_outputs);
+	PX4_INFO("MIXER IS PUBLISHING>>>>>");
 }
 
 void

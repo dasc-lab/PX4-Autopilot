@@ -1,15 +1,16 @@
 // Devansh Agrawal 
 // March 2023
 
-
-
-
 #include "SimpleCommander.hpp"
-
 
 SimpleCommander::SimpleCommander() :
 	ModuleParams(nullptr)
 {
+
+	_boot_timestamp = hrt_absolute_time();
+	_last_preflight_check = hrt_absolute_time();
+	_last_arm_status_pub = hrt_absolute_time();
+	
 }
 
 SimpleCommander::~SimpleCommander(){
@@ -29,45 +30,226 @@ void SimpleCommander::run()
 			updateParams();
 		}
 
+		if (hrt_elapsed_time(&_last_arm_status_pub) > 500_ms){
+			publish_arm_status();
+		}
+
 
 		run_state_machine();
+
+		px4_usleep(10_ms);
 
 	}
 }
 
+bool SimpleCommander::check_has_landed(){
+	// check if the drone has successfully landed
+	return true;
+}
+
+bool SimpleCommander::set_state(VehicleState new_state){
+
+	switch(new_state){
+		case VehicleState::DISARMED:
+			_state = VehicleState::DISARMED;
+			publish_arm_status();
+			return true;
+
+		case VehicleState::ARMED:
+
+			if (_state != VehicleState::DISARMED){
+				PX4_WARN("ARMING DENIED! Vehicle is not currently disarmed.");
+				return false;
+			}
+
+		  if (!preflight_check()){
+			  //PX4_WARN("ARMING DENIED! Vehicle did not pass preflight checks.");
+			  return false;
+			}
+
+			PX4_INFO("Arming...");
+			_state = VehicleState::ARMED;
+			publish_arm_status();
+			return true;
+
+		case VehicleState::OFFBOARD:
+			if (_state != VehicleState::ARMED){
+				PX4_WARN("OFFBOARD MODE DENIED! Vehicle is not currently armed.");
+				return false;
+			}
+
+			// TODO(dev): check if offboard mode messages have been recevied.
+
+			PX4_INFO("Switching to offboard control...");
+			_state = VehicleState::OFFBOARD;
+			return true;
+
+		case VehicleState::LAND:
+
+			if (_state == VehicleState::DISARMED){
+				PX4_WARN("LAND MODE DENIED! Vehicle is currently disarmed");
+				return false;
+			}
+
+			PX4_INFO("Switching to land mode..."); 
+			_state = VehicleState::LAND;
+			return true;
+		
+		default:
+			return false;
+	}
+}
+
+void SimpleCommander::publish_arm_status(){
+	// should be published at 2Hz or when arming state changes	
+	
+	// first set all to false
+	// see msg definition to know what these mean
+	actuator_armed_s actuator_armed;
+  actuator_armed.armed = false;
+  actuator_armed.prearmed = false;
+  actuator_armed.ready_to_arm = false;
+  actuator_armed.lockdown = false;
+  actuator_armed.manual_lockdown = false;
+  actuator_armed.force_failsafe = false;
+  actuator_armed.in_esc_calibration_mode = false;
+  actuator_armed.soft_stop = false;
+
+	// vehicle_status
+	vehicle_status_s vehicle_status;
+	vehicle_status.nav_state = vehicle_status_s::NAVIGATION_STATE_OFFBOARD;
+	vehicle_status.arming_state = vehicle_status_s::ARMING_STATE_INIT;
+	// vehicle_status.system_type = //TODO: MAVTYPE?
+	// vehicle_status.system_id = //MAVLINK system_id
+	// vehicle_status.component_id;
+	//vehicle_status.vehicle_type = vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
+
+	// replace the ones that need to be replaced
+	switch (_state){
+		case VehicleState::DISARMED:
+			actuator_armed.ready_to_arm = true;
+			actuator_armed.lockdown = true;
+			break;
+		case VehicleState::ARMED:
+			actuator_armed.armed = true;
+			actuator_armed.prearmed = true;
+	    vehicle_status.arming_state = vehicle_status_s::ARMING_STATE_ARMED;
+			break;
+		case VehicleState::OFFBOARD:
+			actuator_armed.armed = true;
+	    vehicle_status.arming_state = vehicle_status_s::ARMING_STATE_ARMED;
+			break;
+		case VehicleState::LAND:
+			actuator_armed.armed = true;
+	    vehicle_status.arming_state = vehicle_status_s::ARMING_STATE_ARMED;
+			break;
+		default:
+			// should never get here
+			return;
+	}
+	
+	// publish
+	auto now = hrt_absolute_time();
+	actuator_armed.timestamp = now;
+	vehicle_status.timestamp = now;
+  _last_arm_status_pub = now;
+	_actuator_armed_pub.publish(actuator_armed);
+	_vehicle_status_pub.publish(vehicle_status);
+
+}
+
+
+
 void SimpleCommander::run_state_machine(){
 
-	switch (_vehicle_state){
+	switch (_state){
 
-		case VehicleState::IDLE:
+		case VehicleState::DISARMED:
+			set_state(VehicleState::ARMED);
+			
+			// // check if arming message received
+			// bool arming_msg_received =  true;	
+			// if (arming_msg_received){
+			//     set_state(VehicleState::ARMED);
+			// }
+
 			return;
 
-		case VehicleState::TAKEOFF:
-			// check if the target location is reached
-			// if yes, switch to hover mode
-		
+		case VehicleState::ARMED:
+			set_state(VehicleState::OFFBOARD);
+			
+			// // check if offboard message received
+			// bool offboard_msg_received =  true;
+			// 
+			// if (offboard_msg_received){
+			//     set_state(VehicleState::OFFBOARD);
+			// }
+
 			return;
 
-		case VehicleState::HOVER:
-			// wait for offboard messages
-			return;
+		case VehicleState::OFFBOARD:
 
-		case VehicleState::MANUAL_CONTROL:
-			return;
+			publish_takeoff_setpoint();
 
-		case VehicleState::OFFBOARD_CONTROL:
-			// check how long it has been since last offboard message
-			// land if necessary
 			return;
 
 		case VehicleState::LAND:
-			// check if landed
-			// switch to IDLE and disarmed if necessary
+			if (check_has_landed()){
+				set_state(VehicleState::DISARMED);
+			}
+			return;
 
 		default:
 			// should never get here
 			return;
 	}
+
+}
+
+void SimpleCommander::publish_takeoff_setpoint(){
+
+
+	// publish offboard setpoint
+	vehicle_local_position_setpoint_s setpoint;
+	setpoint.timestamp = hrt_absolute_time();
+
+	setpoint.x = 0.0;
+	setpoint.y = 0.0;
+	setpoint.z = -4.0;
+	setpoint.yaw = 0.0;
+	setpoint.yawspeed = 0.0;
+	setpoint.vx = 0.0;
+	setpoint.vy = 0.0;
+	setpoint.vz = 0.0;
+	for (int i=0; i < 3; i++){
+		setpoint.acceleration[i] = 0.0;
+		setpoint.jerk[i] = 0.0;
+		setpoint.thrust[i] = 0.0;
+	}
+
+
+	// publish offboard command mode
+  vehicle_control_mode_s mode;
+	mode.timestamp = hrt_absolute_time();
+  mode.flag_armed = true;
+
+	mode.flag_multicopter_position_control_enabled = true;
+	mode.flag_control_manual_enabled = false;
+	mode.flag_control_auto_enabled = false;	
+	mode.flag_control_offboard_enabled = true;
+	mode.flag_control_rates_enabled = true;
+	mode.flag_control_attitude_enabled = true;
+	mode.flag_control_acceleration_enabled = true;
+	mode.flag_control_velocity_enabled = true;
+	mode.flag_control_position_enabled = true;
+	mode.flag_control_altitude_enabled = true;
+	mode.flag_control_climb_rate_enabled = true;
+	mode.flag_control_termination_enabled = false;
+
+
+	_vehicle_control_mode_pub.publish(mode);
+	_trajectory_setpoint_pub.publish(setpoint);
+
 
 }
 
@@ -79,92 +261,95 @@ int SimpleCommander::print_status()
 	return 0;
 }
 
+bool SimpleCommander::preflight_check_ekf(){
 
-bool SimpleCommander::set_setpoint_takeoff()
-{
+	// fail if within first 10 seconds of boot
+	// since EKF is likely to be bogus then
+	
+	auto time_since_boot  = hrt_elapsed_time(&_boot_timestamp);
+	if (time_since_boot < 5_s){
+		PX4_WARN("EKF waiting 5s since boot.");
+		return false;
+	}
+
+	// check that EKF has valid position
+	if (_vehicle_local_position_sub.updated()){
+		vehicle_local_position_s ekf_state; 
+		_vehicle_local_position_sub.update(&ekf_state);
+		
+		if (!ekf_state.xy_valid){
+			PX4_WARN("EKF xy not valid");
+			return false;
+		}
+
+		if (!ekf_state.z_valid){
+			PX4_WARN("EKF z not valid");
+			return false;
+		}
+
+		if (!ekf_state.v_xy_valid){
+			PX4_WARN("EKF v_xy not valid");
+			return false;
+		}
+
+		if (!ekf_state.v_z_valid){
+			PX4_WARN("EKF v_z not valid");
+			return false;
+		}
+
+		if (!ekf_state.heading_good_for_control){
+			PX4_WARN("EKF heading not valid");
+			return false;
+		}
+	}
+
 	return true;
 }
-
-
-bool SimpleCommander::set_setpoint_land()
-{
-	return true;
-}
-
 
 bool SimpleCommander::preflight_check(){
-	PX4_INFO("RUNNING PREFLIGHT CHECKS");
-	if (_arming_state == ArmingState::ARMED)
-  	return true;
-	if (_arming_state == ArmingState::DISARMED)
-  	return true;
+	
+	if (hrt_elapsed_time(&_last_preflight_check) < 250_ms){
+		return false;
+	}
+	_last_preflight_check = hrt_absolute_time();
 
+	// check mag
+	// check accel
+	// check gyro
+	// check baro
+	// check IMU consistency 
+	// check distance sensor
+	// check airspeed sensor
+	// check RC calibration
+	// check system power
+
+	// check EKF
+	if (!preflight_check_ekf()){
+		PX4_WARN("EKF preflight check failed");
+		return false;
+	}
+
+	PX4_INFO("PREFLIGHT PASSED!");
 	return true;
 }
 
 
-bool SimpleCommander::command_arm(){
+bool SimpleCommander::handle_command_arm(){
 	PX4_INFO("COMMAND ARM");
-
-	if (SimpleCommander::preflight_check()) {
-		_arming_state = ArmingState::ARMED;
-
-		return true;
-	
-	} else {
-		
-		command_disarm();
-		return false;
-	}
-
-	return false;
+	return set_state(VehicleState::ARMED);
 }
 
-bool SimpleCommander::command_disarm(){
+bool SimpleCommander::handle_command_disarm(){
 
 	PX4_INFO("COMMAND DISARM");
-	_arming_state = ArmingState::DISARMED;
+	return set_state(VehicleState::DISARMED);
 	return true;
 
 }
 
-bool SimpleCommander::command_takeoff(){
-	PX4_INFO("COMMAND TAKEOFF");
-
-	// check that it is not already flying
-	if (_vehicle_state != VehicleState::IDLE){
-		PX4_WARN("Vehicle is not idle! Ignoring takeoff request!");
-	}
-
-	// try arming
-	if (_arming_state != ArmingState::ARMED){
-	   command_arm();
-	}
-
-	// check that vehicle is armed
-	if (_arming_state != ArmingState::ARMED){
-		PX4_WARN("UNABLE TO ARM! Ignorning takeoff request");
-		return false;
-	}
-
-	// publish takeoff setpoint
-	set_setpoint_takeoff();
-	_vehicle_state = VehicleState::TAKEOFF;
-	return true;
-
-}
-
-bool SimpleCommander::command_land(){
+bool SimpleCommander::handle_command_land(){
 	PX4_INFO("COMMAND LAND");
-
-	if (_arming_state != ArmingState::ARMED) {
-		PX4_WARN("NOT ARMED! Ignoring land request");
-		return false;
-	}
-
-	set_setpoint_land();
-	return true;
-
+	return set_state(VehicleState::LAND);
 }
 
 
@@ -181,25 +366,23 @@ int SimpleCommander::custom_command(int argc, char *argv[])
     //TODO(dev): (copy from original commander?)
 	}
 
-	if (!strcmp(argv[0], "check")) {
+	if (!strcmp(argv[0], "preflight_check")) {
 		get_instance()->preflight_check();
+		return 0;
 	}
 
 	if (!strcmp(argv[0], "arm")) {
-    get_instance()-> command_arm();
+    get_instance()-> handle_command_arm();
 		return 0;
 	}
 
 	if (!strcmp(argv[0], "disarm")) {
-    get_instance()->command_disarm();
-	}
-
-	if (!strcmp(argv[0], "takeoff")) {
-    get_instance()->command_takeoff();
+    get_instance()->handle_command_disarm();
+		return 0;
 	}
 
 	if (!strcmp(argv[0], "land")) {
-    get_instance()->command_land();
+    get_instance()->handle_command_land();
 		return 0;
 	}
 
@@ -254,8 +437,8 @@ A simplified Commander module
     PRINT_MODULE_USAGE_NAME("simple_commander", "system");
     PRINT_MODULE_USAGE_COMMAND("start");
     PRINT_MODULE_USAGE_COMMAND("arm");
+		PRINT_MODULE_USAGE_COMMAND("disarm");
     PRINT_MODULE_USAGE_COMMAND("preflight_check");
-    PRINT_MODULE_USAGE_COMMAND("takeoff");
     PRINT_MODULE_USAGE_COMMAND("land");
 
     return 1;
