@@ -180,9 +180,9 @@ void Simulator::actuator_controls_from_outputs(mavlink_hil_actuator_controls_t *
 				   (!is_fixed_wing && i < pos_thrust_motors_count)) {	//multirotor, rotor channel
 				/* scale PWM out PWM_DEFAULT_MIN..PWM_DEFAULT_MAX us to 0..1 for rotors */
 				msg->controls[i] = (_actuator_outputs.output[i] - PWM_DEFAULT_MIN) / (PWM_DEFAULT_MAX - PWM_DEFAULT_MIN);
-				if (i==0){
-				  PX4_INFO("msg->controls[%d]: %f", i, (double)msg->controls[i]);
-				}
+				//if (i==0){
+				//  PX4_INFO("msg->controls[%d]: %f", i, (double)msg->controls[i]);
+				//}
 				msg->controls[i] = math::constrain(msg->controls[i], 0.f, 1.f);
 
 			} else {

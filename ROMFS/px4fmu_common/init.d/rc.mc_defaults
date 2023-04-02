@@ -31,7 +31,7 @@ param set-default PWM_MAIN_RATE 400
 #
 set MIXER_AUX pass
 
-set MIXER quad_x
+set MIXER pass # quad_x
 
 set PWM_OUT 1234
 

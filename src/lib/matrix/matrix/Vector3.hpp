@@ -156,5 +156,7 @@ public:
 
 using Vector3f = Vector3<float>;
 using Vector3d = Vector3<double>;
+using Vector4f = Vector<float, 4>;
+using Vector4d = Vector<double, 4>;
 
 } // namespace matrix

@@ -148,6 +148,26 @@ public:
 
 		return r;
 	}
+
+	Vector zero_if_nan() const
+	{
+
+		const Vector &a(*this);
+		Vector r;
+
+		bool has_nan = false;
+		for (size_t i=0; i < M; i++ && !has_nan){
+			if (isnan(a(i))) {
+				has_nan = true;
+			}
+		}
+
+		if (has_nan) {
+			return r;
+		} else {
+			return a;
+		}
+	}
 };
 
 } // namespace matrix

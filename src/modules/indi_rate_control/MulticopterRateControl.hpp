@@ -76,6 +76,8 @@
 
 using namespace time_literals;
 
+//using matrix::Vector4f = matrix::Vector<float, 4>;
+
 class MulticopterRateControl : public ModuleBase<MulticopterRateControl>, public ModuleParams, public px4::WorkItem
 {
 public:
@@ -101,10 +103,14 @@ private:
 	 */
 	void		parameters_updated();
 
-	void updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt);
+	void construct_G_matrix();
+	matrix::Vector<float,4> mix(matrix::Vector3f torque_cmd, float thrust_cmd);
+	void publish_actuator_outputs(matrix::Vector<float,4> omega);
 
-	void publishTorqueSetpoint(const matrix::Vector3f &torque_sp, const hrt_abstime &timestamp_sample);
-	void publishThrustSetpoint(const hrt_abstime &timestamp_sample);
+	//void updateActuatorControlsStatus(const actuator_controls_s &actuators, float dt);
+
+	//void publishTorqueSetpoint(const matrix::Vector3f &torque_sp, const hrt_abstime &timestamp_sample);
+	//void publishThrustSetpoint(const hrt_abstime &timestamp_sample);
 
 	RateControl _rate_control; ///< class for rate control calculations
 
@@ -131,8 +137,19 @@ private:
 
 	hrt_abstime _last_run{0};
 
+	bool _jMAVSIM = true; // different control effectiveness matrix if using jMAVSIM or using Gazebo
+
+  float _mass{1.0f};
+	matrix::SquareMatrix<float, 3> _J;
+	matrix::SquareMatrix<float, 3> _invJ;
+
   matrix::SquareMatrix<float, 4> _G;
   matrix::SquareMatrix<float, 4> _invG;
+
+
+	// NOTE: we use kilo-radians for angular speed to make many of the numbers much more reasonable.
+	float _k_thrust; // N / (kRad/s)^2
+	float _k_torque; // Nm / (kRad/s)^2
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::INDI_ROLLRATE_P>) _param_indi_rollrate_p,

@@ -43,6 +43,8 @@ using namespace matrix;
 using namespace time_literals;
 using math::radians;
 
+using Vector4f = Vector<float, 4>;
+
 MulticopterRateControl::MulticopterRateControl() :
 	ModuleParams(nullptr),
 	WorkItem(MODULE_NAME, px4::wq_configurations::rate_ctrl),
@@ -51,7 +53,6 @@ MulticopterRateControl::MulticopterRateControl() :
 	_vehicle_status.vehicle_type = vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
 
 	parameters_updated();
-	//_controller_status_pub.advertise();
 
 	//moving_error(0) = 0.0;
 	//moving_error(1) = 0.0;
@@ -60,6 +61,16 @@ MulticopterRateControl::MulticopterRateControl() :
 
 	construct_G_matrix();
 
+	// construct J matrix
+  _J.setZero();
+	_J(0,0) = 0.005;
+	_J(1,1) = 0.009;
+	_J(2,2) = 0.009;
+	_invJ = _J.I();
+	
+	// set mass
+	_mass = 0.8;
+
 }
 
 void MulticopterRateControl::construct_G_matrix()
@@ -67,10 +78,13 @@ void MulticopterRateControl::construct_G_matrix()
   
 	// construct the G, Ginv matrix,
 	// assumes the quadrotor is arranged as follows:
-	//
-	//   3     1
-	//      x
-	//   2     4
+	//     +x
+	//      ^
+	//      |
+	//      |
+	//   2     0
+	//      x       --> +y
+	//   1     3
 	//
 	// where 1 is spinning ccw
 	//
@@ -84,18 +98,44 @@ void MulticopterRateControl::construct_G_matrix()
 	//   torque is in Nm
 	//   omega is in kilo-rad/s
 
-	float LX = 0.3;
-	float LY = 0.3;
-	float k_thrust = 1.0;
-	float k_torque = 0.6;
+  float L = 0.33 / 2.0; // arm_length 
+  float LX = L / sqrt(2.0f);
+  float LY = L / sqrt(2.0f);
+	if (_jMAVSIM){
+		_k_thrust = 4.0;
+  	_k_torque = 0.05;
+	}
+	else {
+		_k_thrust = 4.0;
+		_k_torque = 0.05;
+	}
+
+	Vector3f rotor_pos_0 ( LX,  LY, 0);
+	Vector3f rotor_pos_1 (-LX, -LY, 0);
+	Vector3f rotor_pos_2 ( LX, -LY, 0);
+	Vector3f rotor_pos_3 (-LX,  LY, 0);
+
+	Vector3f iz (0,0,1);
 
 	for (size_t motor_ind = 0; motor_ind < 4; motor_ind ++){
-
-		_G(0, motor_ind) = -k_thrust;
-	// TODO: CONTINUE HERE	
-
-
+		_G(0, motor_ind) = -_k_thrust;
 	}
+
+	// TODO: check sign!
+	Vector3f torque_0 = -_k_thrust * rotor_pos_0.cross(iz) + Vector3f(0,0,_k_torque);
+	Vector3f torque_1 = -_k_thrust * rotor_pos_1.cross(iz) + Vector3f(0,0,_k_torque);
+	Vector3f torque_2 = -_k_thrust * rotor_pos_2.cross(iz) - Vector3f(0,0,_k_torque);
+	Vector3f torque_3 = -_k_thrust * rotor_pos_3.cross(iz) - Vector3f(0,0,_k_torque);
+
+	for (size_t i=0; i<3; i++){
+		_G(i+1, 0) = torque_0(i);
+		_G(i+1, 1) = torque_1(i);
+		_G(i+1, 2) = torque_2(i);
+		_G(i+1, 3) = torque_3(i);
+	}
+
+
+	_invG = _G.I();
 
 }
 
@@ -118,29 +158,6 @@ MulticopterRateControl::init()
 void
 MulticopterRateControl::parameters_updated()
 {
-	// rate control parameters
-	// The controller gain K is used to convert the parallel (P + I/s + sD) form
-	// to the ideal (K * [1 + 1/sTi + sTd]) form
-	const Vector3f rate_k = Vector3f(_param_indi_rollrate_k.get(), _param_indi_pitchrate_k.get(), _param_indi_yawrate_k.get());
-
-	_rate_control.setGains(
-		rate_k.emult(Vector3f(_param_indi_rollrate_p.get(), _param_indi_pitchrate_p.get(), _param_indi_yawrate_p.get())),
-		rate_k.emult(Vector3f(_param_indi_rollrate_i.get(), _param_indi_pitchrate_i.get(), _param_indi_yawrate_i.get())),
-		rate_k.emult(Vector3f(_param_indi_rollrate_d.get(), _param_indi_pitchrate_d.get(), _param_indi_yawrate_d.get())));
-
-	_rate_control.setIntegratorLimit(
-		Vector3f(_param_indi_rr_int_lim.get(), _param_indi_pr_int_lim.get(), _param_indi_yr_int_lim.get()));
-
-	_rate_control.setFeedForwardGain(
-		Vector3f(_param_indi_rollrate_ff.get(), _param_indi_pitchrate_ff.get(), _param_indi_yawrate_ff.get()));
-
-
-	// manual rate control acro mode rate limits
-	_acro_rate_max = Vector3f(radians(_param_indi_acro_r_max.get()), radians(_param_indi_acro_p_max.get()),
-				  radians(_param_indi_acro_y_max.get()));
-
-	_actuators_0_circuit_breaker_enabled = circuit_breaker_enabled_by_val(_param_cbrk_rate_ctrl.get(), CBRK_RATE_CTRL_KEY);
-
 
 }
 
@@ -164,11 +181,15 @@ MulticopterRateControl::Run()
 		updateParams();
 		parameters_updated();
 	}
+	
+	_vehicle_status_sub.update(&_vehicle_status);
 
 	/* run controller on gyro changes */
 	vehicle_angular_velocity_s angular_velocity;
 
-	if (_vehicle_angular_velocity_sub.update(&angular_velocity)) {
+	bool armed = _vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED;
+
+	if (armed && _vehicle_angular_velocity_sub.update(&angular_velocity)) {
 
 		// GRAB VEHICLE_ANGULAR_ACCEL (immediately)
 		vehicle_angular_acceleration_s v_angular_acceleration{};
@@ -177,13 +198,12 @@ MulticopterRateControl::Run()
 
 
 		// Guard against too small (< 0.125ms) and too large (> 20ms) dt's.
-		const float dt = math::constrain(((now - _last_run) * 1e-6f), 0.000125f, 0.02f);
+		//const float dt = math::constrain(((now - _last_run) * 1e-6f), 0.000125f, 0.02f);
 		_last_run = now;
 
 		const Vector3f angular_accel{v_angular_acceleration.xyz};
 		const Vector3f rates{angular_velocity.xyz};
 
-		_vehicle_status_sub.update(&_vehicle_status);
 
 		// GRAB rates setpoint
 		vehicle_rates_setpoint_s v_rates_sp;
@@ -193,6 +213,8 @@ MulticopterRateControl::Run()
 			_rates_sp(2) = PX4_ISFINITE(v_rates_sp.yaw)   ? v_rates_sp.yaw   : rates(2);
 			_thrust_sp = -v_rates_sp.thrust_body[2];
 		}
+
+		//_thrust_sp = 20.0f; // N
 		
 		// Run the rate controller
 		
@@ -204,6 +226,7 @@ MulticopterRateControl::Run()
 		//moving_error = 0.99f * moving_error + 0.01f * (rates - _rates_sp);
 
 		// Do the mixing
+		PX4_INFO("THRUST_SP: %f", (double)_thrust_sp);
 		Vector4f omega = mix(torque_cmd, _thrust_sp);
 
 		publish_actuator_outputs(omega);
@@ -217,11 +240,32 @@ MulticopterRateControl::Run()
 Vector4f MulticopterRateControl::mix(Vector3f torque_cmd, float thrust_cmd)
 {
 
-	Vector4f fM (thrust_cmd, torque_cmd(0), torque_cmd(1), torque_cmd(2));
+	//PX4_INFO("Thrust_CMD: %f", (double)thrust_cmd);
 
-	Vector4f omega = _Ginv * fM;
+	Vector4f fM;
+	fM(0) = thrust_cmd;
+	for (size_t i=0; i<3; i++){
+		fM(i+1) = torque_cmd(i);
+	}
 
-	return omega
+	Vector4f omega;
+
+	if (_jMAVSIM){
+		// they assume linear model PWM -> thrust	
+	  omega = _invG * fM;
+	  for (size_t i=0; i<4; i++){
+	  	omega(i) = (omega(i) > 0) ? omega(i) : 0.0;
+		}
+
+	} else {
+			// gazebo assumes quadratic relationship
+		Vector4f omega_sq = _invG * fM;
+		for (size_t i=0; i<4; i++){
+			omega(i) = (omega_sq(i) > 0) ? sqrt(omega_sq(i)) : 0.0;
+		}
+	}
+
+	return omega;
 
 }
 
@@ -229,7 +273,13 @@ Vector4f MulticopterRateControl::mix(Vector3f torque_cmd, float thrust_cmd)
 void MulticopterRateControl::publish_actuator_outputs(Vector4f omega)
 {
 
-	const float MOTOR_SPEED_MAX = 2000.0;
+	float MOTOR_SPEED_MAX = 1.0; // in [0,1]
+	if (_jMAVSIM){ 
+		MOTOR_SPEED_MAX = 1.0;
+	}
+	else {
+		MOTOR_SPEED_MAX = 2000.0; // TODO: check
+	}
 	const float PWM_MIN = 1000.0f;
 	const float PWM_MAX = 2000.0f;
 
@@ -239,8 +289,15 @@ void MulticopterRateControl::publish_actuator_outputs(Vector4f omega)
 
 	for (size_t i=0; i<4; i++){
 		// assumes linear scaling between PWM and omega output
-		actuator_outputs.output[i] = PWM_MIN + (PWM_MAX-PWM_MIN) * (omega(i) / MOTOR_SPEED_MAX);
+		float f = omega(i) / MOTOR_SPEED_MAX;
+		f = (f > 1) ? 1 : f;
+		f = (f < 0) ? 0 : f;
+		actuator_outputs.output[i] = PWM_MIN + (PWM_MAX-PWM_MIN) * f;
 	}
+
+	//for (size_t i=0; i<4; i++){
+	//	actuator_outputs.output[i] = (i==3) ? PWM_MAX : 0.5f*(PWM_MIN + PWM_MAX);
+	//}
 	
 	actuator_outputs.timestamp = hrt_absolute_time();
 	actuator_outputs.noutputs = 4;
